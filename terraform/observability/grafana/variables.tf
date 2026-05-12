@@ -33,6 +33,12 @@ variable "alert_folder_title" {
   default     = "Shaka Observability"
 }
 
+variable "runbook_base_url" {
+  description = "Runbook URL attached to managed alert rule annotations."
+  type        = string
+  default     = "https://github.com/dannawagyu/shaka-infrastructure/blob/main/docs/observability/grafana-alerting.md"
+}
+
 variable "environment" {
   description = "Environment label attached to managed alert rules."
   type        = string

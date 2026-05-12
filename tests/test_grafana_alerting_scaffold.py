@@ -49,7 +49,14 @@ class GrafanaAlertingScaffoldTest(unittest.TestCase):
         found = set(re.findall(r'([a-z0-9_]+)\s+=\s+\{', tf))
         missing = EXPECTED_ALERT_UIDS - found
         self.assertFalse(missing, f"missing alert rule uid(s): {sorted(missing)}")
-        self.assertGreaterEqual(tf.count('resource "grafana_rule_group"'), 1)
+        self.assertIn("var.runbook_base_url", tf)
+        self.assertIn("intervalMs    = 15000", tf)
+        self.assertIn('query     = { params = ["B"] }', tf)
+        for query_part in ["sum by (instance, job) (rate(http_server_requests_seconds_count", "sum by (instance, job) (jvm_memory_used_bytes", "avg by (instance, job) (rate(node_cpu_seconds_total"]:
+            self.assertIn(query_part, tf)
+        self.assertNotIn('query     = { params = ["C"] }', tf)
+        self.assertNotIn("intervalMs    = 1000", tf)
+        self.assertNotIn('runbook_url = "https://github.com/dannawagyu/shaka-infrastructure/blob/main/docs/observability/grafana-alerting.md"', tf)
         self.assertNotIn(
             "grafana_contact_point",
             tf,

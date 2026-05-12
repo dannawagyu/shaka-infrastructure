@@ -29,12 +29,12 @@ resource "grafana_rule_group" "shaka_rfc_0010" {
       }
       http_5xx = {
         title     = "Shaka HTTP 5xx rate high"
-        condition = "sum(rate(http_server_requests_seconds_count{status=~\"5..\"}[5m])) > 0.05"
+        condition = "sum by (instance, job) (rate(http_server_requests_seconds_count{status=~\"5..\"}[5m])) / sum by (instance, job) (rate(http_server_requests_seconds_count[5m])) > 0.05"
         summary   = "Backend is returning elevated 5xx responses."
       }
       jvm_heap_high = {
         title     = "Shaka JVM heap pressure"
-        condition = "sum(jvm_memory_used_bytes{area=\"heap\"}) / sum(jvm_memory_max_bytes{area=\"heap\"}) > 0.85"
+        condition = "sum by (instance, job) (jvm_memory_used_bytes{area=\"heap\"}) / sum by (instance, job) (jvm_memory_max_bytes{area=\"heap\"}) > 0.85"
         summary   = "JVM heap usage is above 85%."
       }
       root_disk_warn = {
@@ -54,7 +54,7 @@ resource "grafana_rule_group" "shaka_rfc_0010" {
       }
       cpu_saturation = {
         title     = "Shaka host CPU saturation"
-        condition = "1 - avg(rate(node_cpu_seconds_total{mode=\"idle\"}[5m])) > 0.90"
+        condition = "1 - avg by (instance, job) (rate(node_cpu_seconds_total{mode=\"idle\"}[5m])) > 0.90"
         summary   = "Host CPU usage is above 90%."
       }
       core_systemd_service_down = {
@@ -78,7 +78,7 @@ resource "grafana_rule_group" "shaka_rfc_0010" {
 
       annotations = {
         summary     = rule.value.summary
-        runbook_url = "https://github.com/dannawagyu/shaka-infrastructure/blob/main/docs/observability/grafana-alerting.md"
+        runbook_url = var.runbook_base_url
       }
 
       data {
@@ -96,7 +96,7 @@ resource "grafana_rule_group" "shaka_rfc_0010" {
             uid  = var.prometheus_datasource_uid
           }
           expr          = rule.value.condition
-          intervalMs    = 1000
+          intervalMs    = 15000
           maxDataPoints = 43200
           refId         = "A"
         })
@@ -134,7 +134,7 @@ resource "grafana_rule_group" "shaka_rfc_0010" {
           conditions = [{
             evaluator = { type = "gt", params = [0] }
             operator  = { type = "and" }
-            query     = { params = ["C"] }
+            query     = { params = ["B"] }
             reducer   = { type = "last" }
             type      = "query"
           }]
