@@ -25,7 +25,7 @@ class ProductionImportPlanTest(unittest.TestCase):
             "IAM instance profile",
             "EBS root volume",
             "backup",
-            "terraform import",
+            "resource` blocks first",
             "no unexpected replacement",
             "No AWS credentials",
             "Closes #4",
@@ -34,8 +34,12 @@ class ProductionImportPlanTest(unittest.TestCase):
 
     def test_terraform_data_scaffold_uses_existing_ids_and_no_rebuild(self):
         text = TF.read_text()
-        for name in ["existing_app_instance_id", "existing_app_security_group_id", "existing_vpc_id", "existing_public_subnet_id"]:
+        for name in ["existing_app_instance_id", "existing_public_subnet_id"]:
             self.assertIn(f'variable "{name}"', text)
+        self.assertNotIn('variable "existing_app_security_group_id"', text)
+        self.assertNotIn('variable "existing_vpc_id"', text)
+        self.assertIn("id = var.app_security_group_id", text)
+        self.assertIn("id = var.vpc_id", text)
         for data in ["aws_instance", "aws_security_group", "aws_vpc", "aws_subnet"]:
             self.assertIn(f'data "{data}"', text)
         self.assertNotIn('resource "aws_instance"', text)

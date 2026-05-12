@@ -40,15 +40,15 @@ aws ec2 describe-volumes --filters 'Name=attachment.instance-id,Values=<instance
 1. Set only non-secret IDs in local uncommitted `*.tfvars` or `TF_VAR_*` env vars.
 2. Run `terraform plan` with `data` references only.
 3. Confirm there is no unexpected replacement or destructive change.
-4. If importing, add one import at a time and rerun `terraform plan` after each import.
+4. If importing, define the matching `resource` blocks first (for example in `resources.tf`) with names aligned to the scaffold such as `aws_instance.existing_app` or `aws_security_group.existing_app`, then add one import at a time and rerun `terraform plan` after each import.
 
 Example commands to adapt after exact resource addresses are chosen:
 
 ```bash
-terraform import 'aws_instance.app[0]' '<instance-id>'
-terraform import 'aws_security_group.app[0]' '<app-security-group-id>'
-terraform import 'aws_vpc.main[0]' '<vpc-id>'
-terraform import 'aws_subnet.public[0]' '<subnet-id>'
+terraform import 'aws_instance.existing_app[0]' '<instance-id>'
+terraform import 'aws_security_group.existing_app' '<app-security-group-id>'
+terraform import 'aws_vpc.existing' '<vpc-id>'
+terraform import 'aws_subnet.existing_public[0]' '<subnet-id>'
 ```
 
 Do not import by manually editing Terraform state. Do not run `terraform apply` until a plan no-op is reviewed.
