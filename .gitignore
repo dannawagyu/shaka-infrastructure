@@ -1,0 +1,24 @@
+# Terraform working directories and state
+.terraform/
+**/.terraform/
+terraform.tfstate*
+*.tfvars
+*.tfvars.json
+
+# Generated Terraform plans
+*.tfplan
+*.plan
+terraform.plan
+
+# Local overrides and logs
+*.tfstate.backup
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# Python cache
+__pycache__/
+*.py[cod]
