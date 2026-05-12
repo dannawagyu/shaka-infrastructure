@@ -9,13 +9,17 @@ DOC = ROOT / "docs" / "observability" / "grafana-prometheus-loki-stack.md"
 
 class GrafanaPrometheusLokiStackTest(unittest.TestCase):
     def test_loki_inputs_and_free_tier_defaults_exist(self):
-        text = "\n".join(path.read_text() for path in TF.glob("*.tf"))
+        text = (TF / "stack-variables.tf").read_text()
         for name in ["loki_endpoint", "loki_user", "loki_token", "prometheus_remote_write_endpoint", "prometheus_remote_write_user", "prometheus_remote_write_token"]:
             self.assertIn(f'variable "{name}"', text)
         self.assertRegex(text, r'variable\s+"loki_token"[\s\S]*?sensitive\s+=\s+true')
         self.assertRegex(text, r'variable\s+"prometheus_remote_write_token"[\s\S]*?sensitive\s+=\s+true')
         self.assertIn('variable "enable_loki_ingestion"', text)
         self.assertRegex(text, r'variable\s+"enable_loki_ingestion"[\s\S]*?default\s+=\s+false')
+        self.assertIn("observability_stack_labels = merge(local.shaka_alert_labels", text)
+        self.assertNotIn('service_name           = "shaka-server"', text)
+        self.assertNotIn('deployment_environment = var.environment', text)
+        self.assertIn('metrics_backend = "grafana-cloud-prometheus"', text)
 
     def test_runbook_documents_ownership_and_privacy(self):
         text = DOC.read_text()

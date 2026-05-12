@@ -47,10 +47,8 @@ variable "enable_loki_ingestion" {
 }
 
 locals {
-  observability_stack_labels = {
-    service_name           = "shaka-server"
-    deployment_environment = var.environment
-    metrics_backend        = "grafana-cloud-prometheus"
-    logs_backend           = var.enable_loki_ingestion ? "grafana-cloud-loki" : "staged"
-  }
+  observability_stack_labels = merge(local.shaka_alert_labels, {
+    metrics_backend = "grafana-cloud-prometheus"
+    logs_backend    = var.enable_loki_ingestion ? "grafana-cloud-loki" : "staged"
+  })
 }
