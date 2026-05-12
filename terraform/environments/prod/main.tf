@@ -12,14 +12,6 @@ resource "aws_security_group" "rds" {
   description = "Allow Shaka app EC2 access to the production RDS database"
   vpc_id      = var.vpc_id
 
-  egress {
-    description = "Allow outbound responses"
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
   tags = merge(local.common_tags, {
     Name = "${local.name_prefix}-rds"
   })
@@ -49,11 +41,11 @@ resource "aws_db_instance" "shaka" {
   identifier = "${local.name_prefix}-mysql"
 
   engine         = "mysql"
-  engine_version = "8.0"
+  engine_version = "8.0.35"
   instance_class = var.db_instance_class
 
   allocated_storage     = 20
-  max_allocated_storage = 20
+  max_allocated_storage = 100
   storage_type          = "gp3"
   storage_encrypted     = true
 

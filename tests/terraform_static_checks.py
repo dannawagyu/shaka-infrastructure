@@ -42,14 +42,16 @@ def main() -> int:
     assert_contains(tf, r'instance_class\s*=\s*var\.db_instance_class', "RDS instance class must come from the guarded db_instance_class variable")
     assert_contains(tf, r'variable\s+"db_instance_class".*default\s*=\s*"db\.t4g\.micro"', "RDS must default to low-cost db.t4g.micro")
     assert_contains(tf, r'contains\(\["db\.t4g\.micro",\s*"db\.t3\.micro"\]', "RDS must document/allow only db.t3.micro as fallback")
-    assert_contains(tf, r'allocated_storage\s*=\s*20\b', "RDS allocated storage must default to 20 GiB")
+    assert_contains(tf, r'^\s*allocated_storage\s*=\s*20\b', "RDS allocated storage must default to 20 GiB")
+    assert_contains(tf, r'^\s*max_allocated_storage\s*=\s*100\b', "RDS storage autoscaling must allow growth to 100 GiB")
+    assert_contains(tf, r'^\s*engine_version\s*=\s*"8\.0\.35"', "RDS MySQL engine minor version must be pinned")
     assert_contains(tf, r'multi_az\s*=\s*false', "RDS must be Single-AZ (multi_az = false)")
     assert_contains(tf, r'publicly_accessible\s*=\s*false', "RDS must not be publicly accessible")
     assert_contains(tf, r'deletion_protection\s*=\s*true', "Production RDS deletion_protection must be enabled")
     assert_contains(tf, r'prevent_destroy\s*=\s*true', "Production RDS must use prevent_destroy lifecycle guard")
 
     assert_contains(tf, r'resource\s+"aws_security_group_rule"\s+"[^"]*rds[^"]*".*source_security_group_id\s*=\s*var\.app_security_group_id', "RDS ingress must reference the app EC2 security group variable")
-    assert_not_contains(tf, r'resource\s+"aws_security_group_rule"\s+"[^"]*rds[^"]*".*cidr_blocks\s*=\s*\[\s*"0\.0\.0\.0/0"\s*\]', "RDS ingress must not allow 0.0.0.0/0")
+    assert_not_contains(tf, r'cidr_blocks\s*=\s*\[\s*"0\.0\.0\.0/0"\s*\]', "RDS security group must not allow broad ingress or egress to 0.0.0.0/0")
     assert_not_contains(tf, r'resource\s+"aws_(nat_gateway|db_proxy)"', "NAT Gateway and RDS Proxy are out of scope")
     assert_not_contains(tf, r'replicate_source_db|backup_replication|region\s*=\s*"[^"]+"\s*#\s*cross', "Cross-region backup/replication is out of scope")
 
