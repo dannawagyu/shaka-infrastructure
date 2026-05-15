@@ -15,10 +15,6 @@ data "aws_instance" "existing_app" {
   instance_id = var.existing_app_instance_id
 }
 
-data "aws_security_group" "existing_app" {
-  id = var.app_security_group_id
-}
-
 data "aws_vpc" "existing" {
   id = var.vpc_id
 }

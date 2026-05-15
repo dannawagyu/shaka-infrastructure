@@ -7,6 +7,98 @@ locals {
   }
 }
 
+data "aws_vpc" "selected" {
+  id = var.vpc_id
+}
+
+data "aws_subnet" "app_public" {
+  id = var.public_subnet_id
+}
+
+resource "aws_security_group" "app" {
+  name        = "${local.name_prefix}-app"
+  description = "Shaka production app host security group"
+  vpc_id      = var.vpc_id
+
+  tags = merge(local.common_tags, {
+    Name = "${local.name_prefix}-app"
+  })
+}
+
+resource "aws_security_group_rule" "app_ingress_ssh" {
+  type              = "ingress"
+  description       = "SSH from operator CIDR only"
+  security_group_id = aws_security_group.app.id
+  cidr_blocks       = [var.operator_ssh_cidr]
+  from_port         = 22
+  to_port           = 22
+  protocol          = "tcp"
+}
+
+resource "aws_security_group_rule" "app_ingress_http" {
+  type              = "ingress"
+  description       = "HTTP for Lets Encrypt challenge and redirect"
+  security_group_id = aws_security_group.app.id
+  cidr_blocks       = ["0.0.0.0/0"]
+  from_port         = 80
+  to_port           = 80
+  protocol          = "tcp"
+}
+
+resource "aws_security_group_rule" "app_ingress_https" {
+  type              = "ingress"
+  description       = "HTTPS public API traffic through Nginx"
+  security_group_id = aws_security_group.app.id
+  cidr_blocks       = ["0.0.0.0/0"]
+  from_port         = 443
+  to_port           = 443
+  protocol          = "tcp"
+}
+
+resource "aws_security_group_rule" "app_egress_all" {
+  type              = "egress"
+  description       = "Outbound updates, TLS, Grafana remote_write, and RDS client traffic"
+  security_group_id = aws_security_group.app.id
+  cidr_blocks       = ["0.0.0.0/0"]
+  from_port         = 0
+  to_port           = 0
+  protocol          = "-1"
+}
+
+resource "aws_instance" "app" {
+  ami                         = var.app_ami_id
+  instance_type               = var.app_instance_type
+  subnet_id                   = var.public_subnet_id
+  vpc_security_group_ids      = [aws_security_group.app.id]
+  key_name                    = var.ssh_key_name
+  associate_public_ip_address = true
+
+  user_data_replace_on_change = true
+  user_data = templatefile("${path.module}/templates/app-user-data.sh.tftpl", {
+    environment = var.environment
+  })
+
+  root_block_device {
+    volume_size           = var.app_root_volume_size_gb
+    volume_type           = "gp3"
+    encrypted             = true
+    delete_on_termination = true
+  }
+
+  metadata_options {
+    http_endpoint = "enabled"
+    http_tokens   = "required"
+  }
+
+  tags = merge(local.common_tags, {
+    Name = "${local.name_prefix}-app"
+  })
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
 resource "aws_security_group" "rds" {
   name        = "${local.name_prefix}-rds"
   description = "Allow Shaka app EC2 access to the production RDS database"
@@ -19,9 +111,9 @@ resource "aws_security_group" "rds" {
 
 resource "aws_security_group_rule" "rds_ingress_from_app_ec2" {
   type                     = "ingress"
-  description              = "MySQL from existing Shaka app EC2 security group"
+  description              = "MySQL from Terraform-managed Shaka app EC2 security group"
   security_group_id        = aws_security_group.rds.id
-  source_security_group_id = var.app_security_group_id
+  source_security_group_id = aws_security_group.app.id
   from_port                = 3306
   to_port                  = 3306
   protocol                 = "tcp"

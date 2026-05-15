@@ -1,0 +1,128 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+export DEBIAN_FRONTEND=noninteractive
+apt-get update
+apt-get install -y ca-certificates curl gnupg nginx openjdk-21-jre-headless
+
+install -d -m 0755 /opt/shaka/releases /etc/shaka /etc/alloy /etc/systemd/system/alloy.service.d
+
+cat >/etc/systemd/system/shaka-server.service <<'UNIT'
+[Unit]
+Description=Shaka Spring Boot API
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=ubuntu
+WorkingDirectory=/opt/shaka
+EnvironmentFile=/etc/shaka/env
+ExecStart=/usr/bin/java -jar /opt/shaka/current.jar --spring.profiles.active=prod
+Restart=always
+RestartSec=10
+SuccessExitStatus=143
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+
+cat >/etc/systemd/system/alloy.service.d/limits.conf <<'UNIT'
+[Service]
+Environment=GOMEMLIMIT=96MiB
+EnvironmentFile=-/etc/alloy/grafana-cloud.env
+MemoryMax=128M
+UNIT
+
+cat >/etc/alloy/grafana-cloud.env.example <<'ENV'
+# Copy to /etc/alloy/grafana-cloud.env with mode 600 from the production
+# deployment pipeline. Do not commit real values.
+GRAFANA_PROMETHEUS_REMOTE_WRITE_URL=https://prometheus-prod-xx.grafana.net/api/prom/push
+GRAFANA_PROMETHEUS_REMOTE_WRITE_USER=000000
+GRAFANA_PROMETHEUS_REMOTE_WRITE_TOKEN=glc_xxx
+ENV
+chmod 0644 /etc/alloy/grafana-cloud.env.example
+
+cat >/etc/alloy/config.alloy <<'ALLOY'
+prometheus.scrape "shaka_server" {
+  targets = [{
+    __address__ = "127.0.0.1:8080",
+    service     = "shaka-server",
+    env         = "${environment}",
+  }]
+  metrics_path     = "/actuator/prometheus"
+  scrape_interval  = "30s"
+  forward_to       = [prometheus.relabel.shaka_server_resource_labels.receiver]
+}
+
+prometheus.relabel "shaka_server_resource_labels" {
+  forward_to = [prometheus.remote_write.grafana_cloud.receiver]
+
+  rule {
+    target_label = "service_name"
+    replacement  = "shaka-server"
+  }
+
+  rule {
+    target_label = "deployment_environment"
+    replacement  = "${environment}"
+  }
+
+  rule {
+    target_label = "service_instance_id"
+    replacement  = sys.env("EC2_INSTANCE_ID")
+  }
+}
+
+prometheus.exporter.unix "shaka_host" {
+  enabled_collectors = ["cpu", "meminfo", "filesystem", "loadavg", "netdev", "systemd"]
+
+  filesystem {
+    fs_types_exclude     = "^(autofs|binfmt_misc|bpf|cgroup2?|configfs|debugfs|devpts|devtmpfs|fusectl|hugetlbfs|iso9660|mqueue|nsfs|overlay|proc|procfs|pstore|rpc_pipefs|securityfs|selinuxfs|squashfs|sysfs|tracefs)$"
+    mount_points_exclude = "^/(dev|proc|run/credentials/.+|sys|var/lib/docker/.+)($|/)"
+  }
+
+  systemd {
+    unit_include = "^(shaka-server|nginx|alloy)\\.service$"
+  }
+}
+
+prometheus.scrape "shaka_host" {
+  targets         = prometheus.exporter.unix.shaka_host.targets
+  scrape_interval = "30s"
+  forward_to      = [prometheus.relabel.shaka_host_resource_labels.receiver]
+}
+
+prometheus.relabel "shaka_host_resource_labels" {
+  forward_to = [prometheus.remote_write.grafana_cloud.receiver]
+
+  rule {
+    target_label = "service_name"
+    replacement  = "shaka-host"
+  }
+
+  rule {
+    target_label = "deployment_environment"
+    replacement  = "${environment}"
+  }
+
+  rule {
+    target_label = "service_instance_id"
+    replacement  = sys.env("EC2_INSTANCE_ID")
+  }
+}
+
+prometheus.remote_write "grafana_cloud" {
+  endpoint {
+    url = sys.env("GRAFANA_PROMETHEUS_REMOTE_WRITE_URL")
+
+    basic_auth {
+      username = sys.env("GRAFANA_PROMETHEUS_REMOTE_WRITE_USER")
+      password = sys.env("GRAFANA_PROMETHEUS_REMOTE_WRITE_TOKEN")
+    }
+  }
+}
+ALLOY
+
+systemctl daemon-reload
+systemctl enable shaka-server || true
+systemctl enable alloy || true
