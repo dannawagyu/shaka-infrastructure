@@ -10,23 +10,37 @@ variable "environment" {
   default     = "prod"
 }
 
-variable "vpc_id" {
-  description = "Existing VPC ID for Shaka production. This stack creates EC2/RDS inside the existing VPC rather than replacing networking."
+variable "vpc_cidr" {
+  description = "CIDR block for the Terraform-managed Shaka production VPC."
   type        = string
+  default     = "10.42.0.0/16"
 }
 
-variable "public_subnet_id" {
-  description = "Existing public subnet ID for the Shaka EC2 app host."
-  type        = string
-}
-
-variable "private_subnet_ids" {
-  description = "Existing private subnet IDs for the RDS DB subnet group. Use at least two subnets in different AZs when available while keeping the DB instance Single-AZ."
+variable "availability_zones" {
+  description = "Two availability zones for the app public subnet and RDS private subnet group. First AZ hosts the EC2 app and preferred RDS AZ."
   type        = list(string)
+  default     = ["ap-northeast-2a", "ap-northeast-2c"]
 
   validation {
-    condition     = length(var.private_subnet_ids) >= 2
-    error_message = "Provide at least two private subnet IDs for the RDS DB subnet group."
+    condition     = length(var.availability_zones) >= 2
+    error_message = "Provide at least two availability zones for the RDS DB subnet group."
+  }
+}
+
+variable "public_subnet_cidr" {
+  description = "CIDR block for the public subnet that hosts the Shaka EC2 app server."
+  type        = string
+  default     = "10.42.0.0/24"
+}
+
+variable "private_subnet_cidrs" {
+  description = "CIDR blocks for private RDS subnets. Provide at least two private subnets in different AZs."
+  type        = list(string)
+  default     = ["10.42.10.0/24", "10.42.11.0/24"]
+
+  validation {
+    condition     = length(var.private_subnet_cidrs) >= 2
+    error_message = "Provide at least two private subnet CIDRs for the RDS DB subnet group."
   }
 }
 

@@ -38,9 +38,16 @@ def assert_not_contains(text: str, pattern: str, message: str) -> None:
 def main() -> int:
     tf = all_tf()
 
+    assert_contains(tf, r'resource\s+"aws_vpc"\s+"shaka"', "Terraform-managed production VPC is required")
+    assert_contains(tf, r'enable_dns_hostnames\s*=\s*true', "VPC DNS hostnames must be enabled for EC2/RDS usability")
+    assert_contains(tf, r'resource\s+"aws_internet_gateway"\s+"shaka"', "Public app subnet requires an Internet Gateway")
+    assert_contains(tf, r'resource\s+"aws_subnet"\s+"app_public"', "Terraform-managed public app subnet is required")
+    assert_contains(tf, r'resource\s+"aws_subnet"\s+"rds_private"', "Terraform-managed private RDS subnets are required")
+    assert_contains(tf, r'route\s*\{[^}]*cidr_block\s*=\s*"0\.0\.0\.0/0"[^}]*gateway_id\s*=\s*aws_internet_gateway\.shaka\.id', "Only the public route table should route to the Internet Gateway")
     assert_contains(tf, r'resource\s+"aws_instance"\s+"app"', "Terraform-managed EC2 app instance resource is required")
     assert_contains(tf, r'instance_type\s*=\s*var\.app_instance_type', "EC2 instance type must come from the guarded app_instance_type variable")
     assert_contains(tf, r'associate_public_ip_address\s*=\s*true', "EC2 app host must be publicly reachable through 80/443 while app/DB ports stay private")
+    assert_contains(tf, r'subnet_id\s*=\s*aws_subnet\.app_public\.id', "EC2 app host must use the Terraform-managed public subnet")
     assert_contains(tf, r'http_tokens\s*=\s*"required"', "EC2 metadata options must require IMDSv2 tokens")
     assert_contains(tf, r'resource\s+"aws_db_instance"', "RDS DB instance resource is required")
     assert_contains(tf, r'instance_class\s*=\s*var\.db_instance_class', "RDS instance class must come from the guarded db_instance_class variable")
@@ -56,11 +63,16 @@ def main() -> int:
 
     assert_contains(tf, r'resource\s+"aws_security_group"\s+"app"', "Terraform-managed app security group is required")
     assert_contains(tf, r'resource\s+"aws_security_group_rule"\s+"rds_ingress_from_app_ec2".*source_security_group_id\s*=\s*aws_security_group\.app\.id', "RDS ingress must reference the Terraform-managed app EC2 security group")
+    assert_contains(tf, r'db_subnet_group_name\s*=\s*aws_db_subnet_group\.shaka\.name', "RDS must use the private DB subnet group")
+    assert_contains(tf, r'subnet_ids\s*=\s*aws_subnet\.rds_private\[\*\]\.id', "RDS subnet group must use Terraform-managed private subnets")
     assert_not_contains(tf, r'resource\s+"aws_security_group_rule"\s+"[^"]*rds[^"]*".*cidr_blocks\s*=\s*\[\s*"0\.0\.0\.0/0"\s*\]', "RDS security group must not allow broad ingress to 0.0.0.0/0")
     assert_not_contains(tf, r'resource\s+"aws_(nat_gateway|db_proxy)"', "NAT Gateway and RDS Proxy are out of scope")
     assert_not_contains(tf, r'replicate_source_db|backup_replication|region\s*=\s*"[^"]+"\s*#\s*cross', "Cross-region backup/replication is out of scope")
 
     outputs = read(PROD / "outputs.tf")
+    assert_contains(outputs, r'output\s+"vpc_id"', "Output vpc_id is required")
+    assert_contains(outputs, r'output\s+"public_subnet_id"', "Output public_subnet_id is required")
+    assert_contains(outputs, r'output\s+"private_subnet_ids"', "Output private_subnet_ids is required")
     assert_contains(outputs, r'output\s+"app_instance_id"', "Output app_instance_id is required")
     assert_contains(outputs, r'output\s+"app_public_ip"', "Output app_public_ip is required")
     assert_contains(outputs, r'output\s+"app_security_group_id"', "Output app_security_group_id is required")
@@ -76,7 +88,7 @@ def main() -> int:
     readme = read(ROOT / "README.md")
     assert_contains(readme, r'Terraform state.*sensitive|sensitive.*Terraform state', "README must warn Terraform state can contain sensitive values")
     assert_contains(readme, r'secrets?', "README must document secrets handling")
-    assert_contains(readme, r'EC2.*RDS|RDS.*EC2', "README must document the combined EC2 + RDS production apply path")
+    assert_contains(readme, r'VPC.*EC2.*RDS|EC2.*RDS.*VPC', "README must document the combined VPC + EC2 + RDS production apply path")
     assert_contains(readme, r'import', "README must document existing EC2/VPC import or reference path")
     assert_contains(readme, r'destroy|prevent_destroy|deletion_protection', "README must document guarded destroy/deletion behavior")
 

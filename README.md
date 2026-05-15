@@ -12,25 +12,42 @@ Terraform baseline for Shaka production AWS infrastructure.
 
 This first PR intentionally keeps scope small and low cost:
 
-- References the existing Shaka VPC and subnets through variables instead of recreating networking.
-- Creates the production EC2 app host and the private, Single-AZ MySQL RDS instance in one Terraform stack so the final cutover can be a reviewed EC2 + RDS apply.
+- Creates a Terraform-managed production VPC, public app subnet, private RDS subnets, Internet Gateway, route tables, and security groups.
+- Creates the production EC2 app host and the private, Single-AZ MySQL RDS instance in one Terraform stack so the final cutover can be a reviewed VPC + EC2 + RDS apply.
 - Creates a Terraform-managed app security group for SSH/HTTP/HTTPS only, with IMDSv2 required on the EC2 instance.
 - Defaults RDS to `db.t4g.micro`; `db.t3.micro` is allowed only as a documented fallback if Graviton/T4g is unavailable in the selected region.
 - Uses 20 GiB of encrypted GP3 storage with modest autoscaling, no Multi-AZ, no NAT Gateway, no RDS Proxy, and no cross-region backup/replication.
-- Allows inbound MySQL only from the Terraform-managed Shaka app EC2 security group.
+- Allows inbound MySQL only from the Terraform-managed Shaka app EC2 security group. RDS has no public access path; DataGrip access should use SSH tunneling through the EC2 host.
 
 ## Existing EC2/VPC import or reference path
 
-This stack now manages the replacement/cutover EC2 app host and RDS together, but it still does not recreate production networking. Provide the existing AWS IDs at plan/apply time:
+This stack now manages the replacement/cutover VPC, EC2 app host, and RDS together. Fill production values in an ignored local file before local plan/apply:
 
-- `vpc_id`
-- `public_subnet_id`
-- `private_subnet_ids`
+```text
+terraform/environments/prod/production.local.tfvars
+```
+
+Start by copying:
+
+```bash
+cp terraform/environments/prod/production.tfvars.example terraform/environments/prod/production.local.tfvars
+```
+
+At minimum Auden/operator should fill:
+
 - `operator_ssh_cidr`
 - `ssh_key_name`
 - `app_ami_id`
+- `db_username`
+- `db_password`
 
-The prior EC2 can still be referenced through optional `existing_app_instance_id` / `existing_public_subnet_id` variables for inventory and no-op review before the cutover. If a future PR brings additional existing resources under Terraform management, use `terraform import` into explicit resources or modules before replacing these reference variables. Do not recreate production networking just to satisfy Terraform ownership.
+The VPC/subnet CIDR defaults can remain unless they overlap another network:
+
+- `vpc_cidr = "10.42.0.0/16"`
+- `public_subnet_cidr = "10.42.0.0/24"`
+- `private_subnet_cidrs = ["10.42.10.0/24", "10.42.11.0/24"]`
+
+The prior EC2/VPC can still be referenced through optional `existing_app_instance_id`, `existing_vpc_id`, and `existing_public_subnet_id` variables for inventory and no-op review before the cutover. If a future PR brings additional existing resources under Terraform management, use `terraform import` into explicit resources or modules before replacing these reference variables.
 
 ## State and secrets handling
 
@@ -51,14 +68,7 @@ terraform init -backend=false
 terraform fmt -check -recursive
 terraform validate
 terraform plan \
-  -var='vpc_id=vpc-...' \
-  -var='public_subnet_id=subnet-public...' \
-  -var='private_subnet_ids=["subnet-private-a","subnet-private-b"]' \
-  -var='operator_ssh_cidr=203.0.113.10/32' \
-  -var='ssh_key_name=shaka-production' \
-  -var='app_ami_id=ami-...' \
-  -var='db_username=...' \
-  -var='db_password=...'
+  -var-file=production.local.tfvars
 ```
 
 Do not run `terraform apply` until a production remote backend and secret handling workflow are approved. In GitHub Actions, use the `production` environment workflow in `.github/workflows/terraform-production.yml`; it requires `apply_confirmation=apply-production` for applies.
@@ -71,6 +81,9 @@ Production database deletion is intentionally guarded by both AWS RDS `deletion_
 
 Terraform outputs expose only non-secret operational values:
 
+- `vpc_id`
+- `public_subnet_id`
+- `private_subnet_ids`
 - `app_instance_id`
 - `app_public_ip`
 - `app_security_group_id`

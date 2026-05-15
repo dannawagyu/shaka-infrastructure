@@ -37,9 +37,9 @@ class ProductionImportPlanTest(unittest.TestCase):
         for name in ["existing_app_instance_id", "existing_public_subnet_id"]:
             self.assertIn(f'variable "{name}"', text)
         self.assertNotIn('variable "existing_app_security_group_id"', text)
-        self.assertNotIn('variable "existing_vpc_id"', text)
+        self.assertIn('variable "existing_vpc_id"', text)
         self.assertNotIn("id = var.app_security_group_id", text)
-        self.assertIn("id = var.vpc_id", text)
+        self.assertIn("id    = var.existing_vpc_id", text)
         for data in ["aws_instance", "aws_vpc", "aws_subnet"]:
             self.assertIn(f'data "{data}"', text)
         self.assertNotIn('resource "aws_instance"', text)

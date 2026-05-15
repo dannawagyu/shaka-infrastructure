@@ -38,9 +38,10 @@ jobs:
       TF_IN_AUTOMATION: "true"
       TF_INPUT: "false"
       TF_VAR_aws_region: ${{ vars.AWS_REGION || 'ap-northeast-2' }}
-      TF_VAR_vpc_id: ${{ vars.SHAKA_VPC_ID }}
-      TF_VAR_public_subnet_id: ${{ vars.SHAKA_PUBLIC_SUBNET_ID }}
-      SHAKA_PRIVATE_SUBNET_IDS_JSON: ${{ vars.SHAKA_PRIVATE_SUBNET_IDS_JSON }}
+      TF_VAR_vpc_cidr: ${{ vars.SHAKA_VPC_CIDR || '10.42.0.0/16' }}
+      TF_VAR_public_subnet_cidr: ${{ vars.SHAKA_PUBLIC_SUBNET_CIDR || '10.42.0.0/24' }}
+      SHAKA_AVAILABILITY_ZONES_JSON: ${{ vars.SHAKA_AVAILABILITY_ZONES_JSON || '["ap-northeast-2a","ap-northeast-2c"]' }}
+      SHAKA_PRIVATE_SUBNET_CIDRS_JSON: ${{ vars.SHAKA_PRIVATE_SUBNET_CIDRS_JSON || '["10.42.10.0/24","10.42.11.0/24"]' }}
       TF_VAR_operator_ssh_cidr: ${{ vars.SHAKA_OPERATOR_SSH_CIDR }}
       TF_VAR_ssh_key_name: ${{ vars.SHAKA_SSH_KEY_NAME }}
       TF_VAR_app_ami_id: ${{ vars.SHAKA_APP_AMI_ID }}
@@ -81,8 +82,6 @@ jobs:
           python3 - <<'PY'
           import json, os, pathlib
           required = [
-              'TF_VAR_vpc_id',
-              'TF_VAR_public_subnet_id',
               'TF_VAR_operator_ssh_cidr',
               'TF_VAR_ssh_key_name',
               'TF_VAR_app_ami_id',
@@ -92,11 +91,15 @@ jobs:
           missing = [name for name in required if not os.environ.get(name)]
           if missing:
               raise SystemExit('Missing required production environment values: ' + ', '.join(missing))
-          private_subnets = os.environ.get('SHAKA_PRIVATE_SUBNET_IDS_JSON')
-          if not private_subnets:
-              raise SystemExit('Missing required production environment variable: SHAKA_PRIVATE_SUBNET_IDS_JSON')
+          availability_zones = os.environ.get('SHAKA_AVAILABILITY_ZONES_JSON')
+          private_subnet_cidrs = os.environ.get('SHAKA_PRIVATE_SUBNET_CIDRS_JSON')
+          if not availability_zones:
+              raise SystemExit('Missing required production environment variable: SHAKA_AVAILABILITY_ZONES_JSON')
+          if not private_subnet_cidrs:
+              raise SystemExit('Missing required production environment variable: SHAKA_PRIVATE_SUBNET_CIDRS_JSON')
           data = {
-              'private_subnet_ids': json.loads(private_subnets),
+              'availability_zones': json.loads(availability_zones),
+              'private_subnet_cidrs': json.loads(private_subnet_cidrs),
           }
           pathlib.Path('production.auto.tfvars.json').write_text(json.dumps(data, indent=2), encoding='utf-8')
           PY

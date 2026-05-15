@@ -7,18 +7,84 @@ locals {
   }
 }
 
-data "aws_vpc" "selected" {
-  id = var.vpc_id
+resource "aws_vpc" "shaka" {
+  cidr_block           = var.vpc_cidr
+  enable_dns_hostnames = true
+  enable_dns_support   = true
+
+  tags = merge(local.common_tags, {
+    Name = "${local.name_prefix}-vpc"
+  })
 }
 
-data "aws_subnet" "app_public" {
-  id = var.public_subnet_id
+resource "aws_internet_gateway" "shaka" {
+  vpc_id = aws_vpc.shaka.id
+
+  tags = merge(local.common_tags, {
+    Name = "${local.name_prefix}-igw"
+  })
+}
+
+resource "aws_subnet" "app_public" {
+  vpc_id                  = aws_vpc.shaka.id
+  cidr_block              = var.public_subnet_cidr
+  availability_zone       = var.availability_zones[0]
+  map_public_ip_on_launch = true
+
+  tags = merge(local.common_tags, {
+    Name = "${local.name_prefix}-public-app"
+    Tier = "public"
+  })
+}
+
+resource "aws_route_table" "public" {
+  vpc_id = aws_vpc.shaka.id
+
+  route {
+    cidr_block = "0.0.0.0/0"
+    gateway_id = aws_internet_gateway.shaka.id
+  }
+
+  tags = merge(local.common_tags, {
+    Name = "${local.name_prefix}-public"
+  })
+}
+
+resource "aws_route_table_association" "app_public" {
+  subnet_id      = aws_subnet.app_public.id
+  route_table_id = aws_route_table.public.id
+}
+
+resource "aws_subnet" "rds_private" {
+  count             = length(var.private_subnet_cidrs)
+  vpc_id            = aws_vpc.shaka.id
+  cidr_block        = var.private_subnet_cidrs[count.index]
+  availability_zone = var.availability_zones[count.index]
+
+  tags = merge(local.common_tags, {
+    Name = "${local.name_prefix}-private-rds-${count.index + 1}"
+    Tier = "private"
+  })
+}
+
+resource "aws_route_table" "private" {
+  vpc_id = aws_vpc.shaka.id
+
+  tags = merge(local.common_tags, {
+    Name = "${local.name_prefix}-private"
+  })
+}
+
+resource "aws_route_table_association" "rds_private" {
+  count          = length(aws_subnet.rds_private)
+  subnet_id      = aws_subnet.rds_private[count.index].id
+  route_table_id = aws_route_table.private.id
 }
 
 resource "aws_security_group" "app" {
   name        = "${local.name_prefix}-app"
   description = "Shaka production app host security group"
-  vpc_id      = var.vpc_id
+  vpc_id      = aws_vpc.shaka.id
 
   tags = merge(local.common_tags, {
     Name = "${local.name_prefix}-app"
@@ -68,7 +134,7 @@ resource "aws_security_group_rule" "app_egress_all" {
 resource "aws_instance" "app" {
   ami                         = var.app_ami_id
   instance_type               = var.app_instance_type
-  subnet_id                   = var.public_subnet_id
+  subnet_id                   = aws_subnet.app_public.id
   vpc_security_group_ids      = [aws_security_group.app.id]
   key_name                    = var.ssh_key_name
   associate_public_ip_address = true
@@ -102,7 +168,7 @@ resource "aws_instance" "app" {
 resource "aws_security_group" "rds" {
   name        = "${local.name_prefix}-rds"
   description = "Allow Shaka app EC2 access to the production RDS database"
-  vpc_id      = var.vpc_id
+  vpc_id      = aws_vpc.shaka.id
 
   tags = merge(local.common_tags, {
     Name = "${local.name_prefix}-rds"
@@ -121,8 +187,8 @@ resource "aws_security_group_rule" "rds_ingress_from_app_ec2" {
 
 resource "aws_db_subnet_group" "shaka" {
   name        = "${local.name_prefix}-rds"
-  description = "Existing private subnets for Shaka production RDS"
-  subnet_ids  = var.private_subnet_ids
+  description = "Terraform-managed private subnets for Shaka production RDS"
+  subnet_ids  = aws_subnet.rds_private[*].id
 
   tags = merge(local.common_tags, {
     Name = "${local.name_prefix}-rds"
@@ -150,6 +216,7 @@ resource "aws_db_instance" "shaka" {
   vpc_security_group_ids = [aws_security_group.rds.id]
   publicly_accessible    = false
   multi_az               = false
+  availability_zone      = var.availability_zones[0]
 
   backup_retention_period   = 7
   copy_tags_to_snapshot     = true

@@ -1,3 +1,18 @@
+output "vpc_id" {
+  description = "Terraform-managed Shaka production VPC ID."
+  value       = aws_vpc.shaka.id
+}
+
+output "public_subnet_id" {
+  description = "Terraform-managed public app subnet ID."
+  value       = aws_subnet.app_public.id
+}
+
+output "private_subnet_ids" {
+  description = "Terraform-managed private RDS subnet IDs."
+  value       = aws_subnet.rds_private[*].id
+}
+
 output "app_instance_id" {
   description = "Terraform-managed Shaka production EC2 instance ID."
   value       = aws_instance.app.id

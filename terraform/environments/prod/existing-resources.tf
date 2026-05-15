@@ -4,6 +4,12 @@ variable "existing_app_instance_id" {
   default     = null
 }
 
+variable "existing_vpc_id" {
+  description = "Optional existing Shaka production VPC ID for discovery before cutover to the Terraform-managed VPC."
+  type        = string
+  default     = null
+}
+
 variable "existing_public_subnet_id" {
   description = "Existing public subnet ID that currently hosts the Shaka EC2 app server."
   type        = string
@@ -16,7 +22,8 @@ data "aws_instance" "existing_app" {
 }
 
 data "aws_vpc" "existing" {
-  id = var.vpc_id
+  count = var.existing_vpc_id == null ? 0 : 1
+  id    = var.existing_vpc_id
 }
 
 data "aws_subnet" "existing_public" {
