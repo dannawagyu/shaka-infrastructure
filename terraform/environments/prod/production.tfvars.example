@@ -13,8 +13,7 @@ private_subnet_cidrs = ["10.42.10.0/24", "10.42.11.0/24"]
 # Access and compute.
 operator_ssh_cidr = "203.0.113.10/32"
 ssh_key_name      = "shaka-production"
-# app_ami_id is optional. Omit/comment it to resolve the latest Canonical Ubuntu 24.04 amd64 AMI in the selected region.
-# app_ami_id      = "ami-xxxxxxxxxxxxxxxxx"
+app_ami_id        = "ami-xxxxxxxxxxxxxxxxx"
 app_instance_type = "t3.micro"
 
 # RDS bootstrap credentials. Keep these in local ignored files or GitHub production secrets.

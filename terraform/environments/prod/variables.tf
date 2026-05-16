@@ -60,10 +60,8 @@ variable "ssh_key_name" {
 }
 
 variable "app_ami_id" {
-  description = "Optional Ubuntu 24.04 AMI ID for the Shaka app host. When null, Terraform resolves the latest Canonical Ubuntu 24.04 amd64 AMI in the target region."
+  description = "Ubuntu 24.04 AMI ID for the Shaka app host. Resolve and pin before apply."
   type        = string
-  default     = null
-  nullable    = true
 }
 
 variable "app_instance_type" {

@@ -13,7 +13,7 @@ Set these as GitHub Environment **variables** on `production` because they are n
 - `SHAKA_PRIVATE_SUBNET_CIDRS_JSON` (optional JSON array, defaults to `["10.42.10.0/24","10.42.11.0/24"]`)
 - `SHAKA_OPERATOR_SSH_CIDR` (required single operator CIDR; never `0.0.0.0/0`)
 - `SHAKA_SSH_KEY_NAME`
-- `SHAKA_APP_AMI_ID` (optional; if empty or invalid in the selected AWS region, the workflow falls back to the latest Canonical Ubuntu 24.04 amd64 AMI lookup)
+- `SHAKA_APP_AMI_ID`
 - `SHAKA_APP_INSTANCE_TYPE` (optional, defaults to `t3.micro`)
 - `SHAKA_DATABASE_NAME` (optional, defaults to `shaka`)
 
@@ -37,7 +37,7 @@ cd /Users/dannawagyu/hermes-workspace/repos/shaka-infrastructure/terraform/envir
 cp production.tfvars.example production.local.tfvars
 ```
 
-Then fill `production.local.tfvars`. Do not commit it. The most important values are `operator_ssh_cidr`, `ssh_key_name`, `db_username`, and `db_password`. `app_ami_id` is optional; omit it to use the current-region Ubuntu 24.04 AMI lookup. Keep the default VPC/subnet CIDRs unless they overlap another VPC, VPN, office network, or Tailscale-routed range.
+Then fill `production.local.tfvars`. Do not commit it. The most important values are `operator_ssh_cidr`, `ssh_key_name`, `app_ami_id`, `db_username`, and `db_password`. Keep the default VPC/subnet CIDRs unless they overlap another VPC, VPN, office network, or Tailscale-routed range.
 
 ## RDS/DataGrip access
 

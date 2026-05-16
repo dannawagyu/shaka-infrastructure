@@ -39,7 +39,7 @@ At minimum Auden/operator should fill:
 
 - `operator_ssh_cidr`
 - `ssh_key_name`
-- `app_ami_id` is optional; leave it unset to resolve the latest Canonical Ubuntu 24.04 amd64 AMI automatically, or pin a known-good AMI ID after verifying it exists in `ap-northeast-2`.
+- `app_ami_id`
 - `db_username`
 - `db_password`
 
