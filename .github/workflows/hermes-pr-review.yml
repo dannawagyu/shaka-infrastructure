@@ -10,18 +10,18 @@ on:
 
 permissions:
   contents: read
-  # Write permissions are used only by the final posting step; reviewer generation
-  # does not receive GITHUB_TOKEN and only emits markdown from PR API context.
-  pull-requests: write
-  issues: write
 
 concurrency:
   group: hermes-pr-review-${{ github.event.pull_request.number || github.event.issue.number }}
   cancel-in-progress: false
 
 jobs:
-  hermes-pr-review:
+  prepare-review:
     runs-on: [self-hosted, hermes-pr-review]
+    permissions:
+      contents: read
+      pull-requests: read
+      issues: read
     if: >
       github.event_name == 'pull_request' ||
       (
@@ -49,6 +49,10 @@ jobs:
           contains(github.event.comment.body, '/review all')
         )
       )
+    outputs:
+      pr: ${{ steps.plan.outputs.pr }}
+      skip: ${{ steps.plan.outputs.skip }}
+      draft: ${{ steps.context.outputs.draft }}
     env:
       HERMES_WORKSPACE: /Users/dannawagyu/hermes-workspace
     steps:
@@ -119,8 +123,37 @@ jobs:
             --reviewers "${{ steps.plan.outputs.reviewers }}" \
             --output-dir /tmp/hermes-pr-review
 
-      - name: Post PR comments
+      - name: Upload Hermes review artifact
         if: steps.plan.outputs.skip != 'true' && steps.context.outputs.draft != 'true' && github.event.pull_request.draft != true
+        uses: actions/upload-artifact@v4
+        with:
+          name: hermes-pr-review
+          path: /tmp/hermes-pr-review
+          if-no-files-found: error
+          retention-days: 1
+
+  post-review:
+    needs: prepare-review
+    runs-on: [self-hosted, hermes-pr-review]
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+    if: >
+      needs.prepare-review.result == 'success' &&
+      needs.prepare-review.outputs.skip != 'true' &&
+      needs.prepare-review.outputs.draft != 'true' &&
+      github.event.pull_request.draft != true
+    env:
+      HERMES_WORKSPACE: /Users/dannawagyu/hermes-workspace
+    steps:
+      - name: Download Hermes review artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: hermes-pr-review
+          path: /tmp/hermes-pr-review
+
+      - name: Post PR comments
         env:
           GITHUB_TOKEN: ${{ github.token }}
         shell: bash
@@ -128,6 +161,6 @@ jobs:
           set -euo pipefail
           python "$HERMES_WORKSPACE/shared/github/pr-review/scripts/post-pr-comments.py" \
             --repo "${{ github.repository }}" \
-            --pr "${{ steps.plan.outputs.pr }}" \
+            --pr "${{ needs.prepare-review.outputs.pr }}" \
             --manifest /tmp/hermes-pr-review/manifest.json \
             --post-inline
