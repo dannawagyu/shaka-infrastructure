@@ -144,7 +144,6 @@ jobs:
     needs: prepare-review
     runs-on: [self-hosted, hermes-pr-review]
     permissions:
-      contents: read
       pull-requests: write
       issues: write
     if: >
