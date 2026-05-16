@@ -99,6 +99,17 @@ variable "db_password" {
   sensitive   = true
 }
 
+variable "db_engine_version" {
+  description = "RDS MySQL engine version. Use the MySQL 8.0 family so AWS selects a supported regional minor version."
+  type        = string
+  default     = "8.0"
+
+  validation {
+    condition     = can(regex("^8\\.0", var.db_engine_version))
+    error_message = "Use the MySQL 8.0 engine family for Shaka production RDS."
+  }
+}
+
 variable "db_backup_retention_period" {
   description = "RDS automated backup retention in days. Default is 1 to satisfy the current AWS account free-tier restriction; increase later after account plan/cost review."
   type        = number
