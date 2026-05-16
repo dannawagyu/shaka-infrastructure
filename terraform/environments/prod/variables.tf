@@ -60,8 +60,10 @@ variable "ssh_key_name" {
 }
 
 variable "app_ami_id" {
-  description = "Ubuntu 24.04 AMI ID for the Shaka app host. Resolve and pin before apply."
+  description = "Optional Ubuntu 24.04 AMI ID for the Shaka app host. When null, Terraform resolves the latest Canonical Ubuntu 24.04 amd64 AMI in the target region."
   type        = string
+  default     = null
+  nullable    = true
 }
 
 variable "app_instance_type" {
@@ -97,6 +99,17 @@ variable "db_password" {
   description = "RDS master password. Supply through GitHub production environment secrets or local uncommitted environment variables."
   type        = string
   sensitive   = true
+}
+
+variable "db_backup_retention_period" {
+  description = "RDS automated backup retention in days. Default is 1 to satisfy the current AWS account free-tier restriction; increase later after account plan/cost review."
+  type        = number
+  default     = 1
+
+  validation {
+    condition     = var.db_backup_retention_period >= 1 && var.db_backup_retention_period <= 7
+    error_message = "Use 1-7 days for the low-cost Shaka production RDS backup retention period."
+  }
 }
 
 variable "db_instance_class" {

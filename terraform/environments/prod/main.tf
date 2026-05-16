@@ -7,6 +7,26 @@ locals {
   }
 }
 
+data "aws_ami" "ubuntu_noble" {
+  most_recent = true
+  owners      = ["099720109477"]
+
+  filter {
+    name   = "name"
+    values = ["ubuntu/images/hvm-ssd-gp3/ubuntu-noble-24.04-amd64-server-*"]
+  }
+
+  filter {
+    name   = "architecture"
+    values = ["x86_64"]
+  }
+
+  filter {
+    name   = "virtualization-type"
+    values = ["hvm"]
+  }
+}
+
 resource "aws_vpc" "shaka" {
   cidr_block           = var.vpc_cidr
   enable_dns_hostnames = true
@@ -132,7 +152,7 @@ resource "aws_security_group_rule" "app_egress_all" {
 }
 
 resource "aws_instance" "app" {
-  ami                         = var.app_ami_id
+  ami                         = coalesce(var.app_ami_id != "" ? var.app_ami_id : null, data.aws_ami.ubuntu_noble.id)
   instance_type               = var.app_instance_type
   subnet_id                   = aws_subnet.app_public.id
   vpc_security_group_ids      = [aws_security_group.app.id]
@@ -218,7 +238,7 @@ resource "aws_db_instance" "shaka" {
   multi_az               = false
   availability_zone      = var.availability_zones[0]
 
-  backup_retention_period   = 7
+  backup_retention_period   = var.db_backup_retention_period
   copy_tags_to_snapshot     = true
   deletion_protection       = true
   skip_final_snapshot       = false
