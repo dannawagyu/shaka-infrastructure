@@ -81,6 +81,14 @@ accidental_db_identifier="$(state_attr aws_db_instance.shaka identifier || true)
 accidental_db_subnet_group="$(state_id aws_db_subnet_group.shaka || true)"
 
 if [[ -n "$accidental_vpc_id" ]]; then
+  vpc_exists="$(aws ec2 describe-vpcs --vpc-ids "$accidental_vpc_id" --query 'Vpcs[0].VpcId' --output text 2>/dev/null | sed 's/^None$//' || true)"
+  if [[ -z "$vpc_exists" ]]; then
+    log "accidental VPC not found in AWS: $accidental_vpc_id"
+    accidental_vpc_id=""
+  fi
+fi
+
+if [[ -n "$accidental_vpc_id" ]]; then
   if [[ -z "$accidental_igw_id" ]]; then
     accidental_igw_id="$(aws ec2 describe-internet-gateways \
       --filters "Name=attachment.vpc-id,Values=$accidental_vpc_id" \
