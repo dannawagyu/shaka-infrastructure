@@ -18,7 +18,7 @@ Managed by Terraform under `terraform/observability/grafana/`:
   - root disk warning and critical;
   - memory pressure;
   - CPU saturation;
-  - core systemd service down (`shaka-server`, `mysql`, `nginx`);
+  - core EC2 systemd service down (`shaka-server`, `nginx`; production MySQL runs on RDS, not systemd);
   - Alloy down.
 
 Manual for now:
@@ -61,8 +61,24 @@ Only run `terraform apply` after reviewing the plan for unexpected deletions or 
 5. Use Grafana's **test notification** button to send exactly one test notification to the incident channel.
 6. Confirm the notification arrives, then keep the webhook only in Grafana Cloud configuration.
 
+## Alloy runtime credentials and validation
+
+Production EC2 user data installs Alloy and a local validator for `/etc/alloy/grafana-cloud.env`, but it does not render Grafana Cloud remote_write credentials into Terraform state or EC2 user data. Populate that file only through the deployment/operator secret path:
+
+```bash
+sudo install -o root -g root -m 0600 /dev/stdin /etc/alloy/grafana-cloud.env <<'EOF'
+GRAFANA_PROMETHEUS_REMOTE_WRITE_URL=https://prometheus-prod-xx.grafana.net/api/prom/push
+GRAFANA_PROMETHEUS_REMOTE_WRITE_USER=<grafana-prometheus-user>
+GRAFANA_PROMETHEUS_REMOTE_WRITE_TOKEN=<grafana-cloud-token>
+EOF
+sudo /usr/local/sbin/validate-alloy-grafana-cloud-env
+sudo systemctl restart alloy
+```
+
+Do not place real remote_write values in Terraform variables, committed files, user_data, shell history, logs, screenshots, or PR comments. The systemd drop-in runs the validator before Alloy starts so a missing, world-readable, or placeholder credential file fails closed.
+
 ## Label and Free-tier guardrails
 
-Rules assume the Alloy collector supplies low-cardinality labels such as `service.name`, `deployment.environment`, and stable job names (`shaka-server`, `shaka-host`). If live label discovery differs, adjust queries in Terraform after verifying the labels in Grafana Explore.
+Rules assume the EC2 Alloy user_data config supplies low-cardinality labels such as `service_name`, `deployment_environment`, and stable Prometheus `job` names (`shaka-server`, `shaka-host`). Alert queries for scrape health explicitly use those `job` labels. If live label discovery differs, adjust Alloy labels and Terraform queries together after verifying the labels in Grafana Explore.
 
 Do not enable broad Loki log ingestion, traces, request-body capture, user IDs as labels, request IDs as labels, JWT subjects, or URL paths with IDs as labels in this ticket. Grafana Cloud Free compatibility and privacy guardrails remain the default.

@@ -25,13 +25,13 @@ Manual items remain manual because they either contain secrets or require live G
 - Grafana Cloud access policy token creation.
 - Prometheus datasource UID lookup.
 - Discord contact point creation and test notification. The Discord contact point remains manual to avoid storing webhook secrets in Terraform state.
-- Any real remote_write/Loki credentials. Provide them through `TF_VAR_*` environment variables or an operator secret manager wrapper only.
+- Any real remote_write/Loki credentials. Prometheus remote_write credentials for EC2 Alloy must be populated at runtime in `/etc/alloy/grafana-cloud.env` by the deployment/operator secret path with `root:root` ownership and mode `0600`; never render them through Terraform state or user_data.
 
 ## Prometheus / Metrics
 
-Metrics are enabled first. Alloy scrapes Spring Boot `/actuator/prometheus` and host metrics, then sends them to Grafana Cloud Prometheus/Mimir remote_write. Alert rules cover app scrape down, host scrape down, HTTP 5xx, JVM heap high, root disk warning/critical, memory pressure, CPU saturation, core systemd service down, and Alloy down.
+Metrics are enabled first. Alloy scrapes Spring Boot `/actuator/prometheus` and host metrics, then sends them to Grafana Cloud Prometheus/Mimir remote_write. Alert rules cover app scrape down, host scrape down, HTTP 5xx, JVM heap high, root disk warning/critical, memory pressure, CPU saturation, core EC2 systemd service down (`shaka-server`, `nginx`; database is RDS), and Alloy down.
 
-Live labels must be checked in Grafana Explore before tightening alert queries. Keep labels low-cardinality and stable.
+Live labels must be checked in Grafana Explore before tightening alert queries. Keep labels low-cardinality and stable. EC2 Alloy user_data explicitly normalizes Prometheus `job` labels to `shaka-server` and `shaka-host` to match the Grafana alert rules.
 
 ## Loki / Logs
 
