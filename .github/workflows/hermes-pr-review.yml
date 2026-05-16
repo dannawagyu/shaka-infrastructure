@@ -23,7 +23,15 @@ jobs:
       pull-requests: read
       issues: read
     if: >
-      github.event_name == 'pull_request' ||
+      (
+        github.event_name == 'pull_request' &&
+        (
+          github.event.pull_request.head.repo.full_name == github.repository ||
+          github.event.pull_request.author_association == 'OWNER' ||
+          github.event.pull_request.author_association == 'MEMBER' ||
+          github.event.pull_request.author_association == 'COLLABORATOR'
+        )
+      ) ||
       (
         github.event_name == 'issue_comment' &&
         github.event.issue.pull_request &&
@@ -75,10 +83,10 @@ jobs:
           else
             echo "pr=${{ github.event.issue.number }}" >> "$GITHUB_OUTPUT"
             echo "mode=rereview" >> "$GITHUB_OUTPUT"
-            python -c 'import json, os; event=json.load(open(os.environ["GITHUB_EVENT_PATH"])); print(event.get("comment", {}).get("body", ""))' > /tmp/hermes-comment-body.txt
+            python -c 'import json, os; event=json.load(open(os.environ["GITHUB_EVENT_PATH"])); print(event.get("comment", {}).get("body", ""))' > "$RUNNER_TEMP/hermes-comment-body.txt"
             set +e
             python "$HERMES_WORKSPACE/shared/github/pr-review/scripts/parse-review-command.py" \
-              --body-file /tmp/hermes-comment-body.txt \
+              --body-file "$RUNNER_TEMP/hermes-comment-body.txt" \
               --actor "${{ github.actor }}" \
               --author-association "${{ github.event.comment.author_association }}" \
               --github-output "$GITHUB_OUTPUT"
@@ -100,8 +108,8 @@ jobs:
         run: |
           set -euo pipefail
           comment_arg=()
-          if [ -f /tmp/hermes-comment-body.txt ]; then
-            comment_arg=(--comment-body-file /tmp/hermes-comment-body.txt)
+          if [ -f "$RUNNER_TEMP/hermes-comment-body.txt" ]; then
+            comment_arg=(--comment-body-file "$RUNNER_TEMP/hermes-comment-body.txt")
           fi
           python "$HERMES_WORKSPACE/shared/github/pr-review/scripts/collect-pr-context.py" \
             --repo "${{ github.repository }}" \
@@ -110,8 +118,8 @@ jobs:
             --mode "${{ steps.plan.outputs.mode }}" \
             --actor "${{ github.actor }}" \
             "${comment_arg[@]}" \
-            --output /tmp/hermes-pr-context.json
-          python -c 'import json; p=json.load(open("/tmp/hermes-pr-context.json")); print("draft=" + str(p.get("pr", {}).get("draft", False)).lower())' >> "$GITHUB_OUTPUT"
+            --output "$RUNNER_TEMP/hermes-pr-context.json"
+          python -c 'import json, os; p=json.load(open(os.path.join(os.environ["RUNNER_TEMP"], "hermes-pr-context.json"))); print("draft=" + str(p.get("pr", {}).get("draft", False)).lower())' >> "$GITHUB_OUTPUT"
 
       - name: Run Hermes reviewers
         if: steps.plan.outputs.skip != 'true' && steps.context.outputs.draft != 'true' && github.event.pull_request.draft != true
@@ -119,16 +127,16 @@ jobs:
         run: |
           set -euo pipefail
           python "$HERMES_WORKSPACE/shared/github/pr-review/scripts/run-pr-review.py" \
-            --payload /tmp/hermes-pr-context.json \
+            --payload "$RUNNER_TEMP/hermes-pr-context.json" \
             --reviewers "${{ steps.plan.outputs.reviewers }}" \
-            --output-dir /tmp/hermes-pr-review
+            --output-dir "$RUNNER_TEMP/hermes-pr-review"
 
       - name: Upload Hermes review artifact
         if: steps.plan.outputs.skip != 'true' && steps.context.outputs.draft != 'true' && github.event.pull_request.draft != true
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: hermes-pr-review
-          path: /tmp/hermes-pr-review
+          path: ${{ runner.temp }}/hermes-pr-review
           if-no-files-found: error
           retention-days: 1
 
@@ -151,7 +159,7 @@ jobs:
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: hermes-pr-review
-          path: /tmp/hermes-pr-review
+          path: ${{ runner.temp }}/hermes-pr-review
 
       - name: Post PR comments
         env:
@@ -162,5 +170,6 @@ jobs:
           python "$HERMES_WORKSPACE/shared/github/pr-review/scripts/post-pr-comments.py" \
             --repo "${{ github.repository }}" \
             --pr "${{ needs.prepare-review.outputs.pr }}" \
-            --manifest /tmp/hermes-pr-review/manifest.json \
+            --manifest "$RUNNER_TEMP/hermes-pr-review/manifest.json" \
             --post-inline
+
