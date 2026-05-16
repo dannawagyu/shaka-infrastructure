@@ -31,3 +31,14 @@ variable "lock_table_name" {
     error_message = "lock_table_name must be between 3 and 255 characters."
   }
 }
+
+variable "access_log_bucket_name" {
+  description = "Globally unique S3 bucket name for Shaka production Terraform state access logs."
+  type        = string
+  default     = "dannawagyu-shaka-prod-terraform-state-logs"
+
+  validation {
+    condition     = can(regex("^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$", var.access_log_bucket_name))
+    error_message = "access_log_bucket_name must be a valid S3 bucket name."
+  }
+}

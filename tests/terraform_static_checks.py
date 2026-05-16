@@ -52,6 +52,26 @@ def regex_group(text: str, pattern: str, message: str) -> str:
     return match.group(1)
 
 
+def hcl_block(text: str, start_pattern: str, message: str) -> str:
+    match = re.search(start_pattern, text, flags=re.IGNORECASE | re.MULTILINE)
+    if not match:
+        raise AssertionError(message)
+    start = match.start()
+    brace = text.find("{", match.end())
+    if brace == -1:
+        raise AssertionError(message)
+    depth = 0
+    for index in range(brace, len(text)):
+        char = text[index]
+        if char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth == 0:
+                return text[start : index + 1]
+    raise AssertionError(message)
+
+
 def main() -> int:
     tf = all_tf()
     backend = backend_tf()
@@ -77,10 +97,16 @@ def main() -> int:
     assert_contains(backend, r'resource\s+"aws_s3_bucket_server_side_encryption_configuration"\s+"terraform_state".*sse_algorithm\s*=\s*"AES256"', "Backend S3 bucket encryption must use AES256 unless KMS is explicitly reviewed")
     assert_contains(backend, r'resource\s+"aws_s3_bucket_public_access_block"\s+"terraform_state".*block_public_acls\s*=\s*true.*block_public_policy\s*=\s*true.*ignore_public_acls\s*=\s*true.*restrict_public_buckets\s*=\s*true', "Backend S3 bucket must block all public access paths")
     assert_contains(backend, r'resource\s+"aws_s3_bucket_ownership_controls"\s+"terraform_state".*object_ownership\s*=\s*"BucketOwnerEnforced"', "Backend S3 bucket must enforce bucket-owner object ownership")
-    assert_contains(backend, r'resource\s+"aws_s3_bucket_lifecycle_configuration"\s+"terraform_state"', "Backend S3 bucket must define lifecycle cost controls")
-    assert_contains(backend, r'abort_incomplete_multipart_upload\s+\{[^}]*days_after_initiation\s*=\s*7', "Backend S3 lifecycle must abort incomplete multipart uploads after 7 days")
-    assert_contains(backend, r'noncurrent_version_transition\s+\{[^}]*noncurrent_days\s*=\s*90[^}]*storage_class\s*=\s*"STANDARD_IA"', "Backend S3 lifecycle must transition noncurrent state versions without expiring them")
-    assert_not_contains(backend, r'noncurrent_version_expiration|expiration\s+\{', "Backend S3 lifecycle must not expire Terraform state history")
+    state_lifecycle = hcl_block(backend, r'resource\s+"aws_s3_bucket_lifecycle_configuration"\s+"terraform_state"', "Backend S3 bucket must define lifecycle cost controls")
+    assert_contains(state_lifecycle, r'abort_incomplete_multipart_upload\s+\{[^}]*days_after_initiation\s*=\s*7', "Backend S3 lifecycle must abort incomplete multipart uploads after 7 days")
+    assert_not_contains(state_lifecycle, r'noncurrent_version_transition|storage_class\s*=\s*"STANDARD_IA"', "Backend S3 lifecycle must not transition small Terraform state files to Standard-IA")
+    assert_not_contains(state_lifecycle, r'noncurrent_version_expiration|\n\s*expiration\s+\{', "Backend S3 lifecycle must not expire Terraform state history")
+    assert_contains(backend, r'resource\s+"aws_s3_bucket"\s+"terraform_state_logs"', "Backend bootstrap must create a separate S3 access log bucket")
+    assert_contains(backend, r'resource\s+"aws_s3_bucket_logging"\s+"terraform_state".*target_bucket\s*=\s*aws_s3_bucket\.terraform_state_logs\.id.*target_prefix\s*=\s*"s3-access-logs/terraform-state/"', "Backend S3 bucket must enable server access logging to the log bucket")
+    assert_contains(backend, r'resource\s+"aws_s3_bucket_server_side_encryption_configuration"\s+"terraform_state_logs".*sse_algorithm\s*=\s*"AES256"', "Backend S3 access log bucket encryption must use AES256")
+    assert_contains(backend, r'resource\s+"aws_s3_bucket_public_access_block"\s+"terraform_state_logs".*block_public_acls\s*=\s*true.*block_public_policy\s*=\s*true.*ignore_public_acls\s*=\s*true.*restrict_public_buckets\s*=\s*true', "Backend S3 access log bucket must block all public access paths")
+    assert_contains(backend, r'AllowS3ServerAccessLogs', "Backend S3 access log bucket policy must allow S3 logging service writes")
+    assert_contains(backend, r'resource\s+"aws_s3_bucket_lifecycle_configuration"\s+"terraform_state_logs".*expiration\s+\{[^}]*days\s*=\s*365', "Backend S3 access log bucket must expire current logs after 365 days")
     assert_contains(backend, r'resource\s+"aws_s3_bucket_policy"\s+"terraform_state"', "Backend S3 bucket must have an access-control bucket policy")
     assert_contains(backend, r'depends_on\s*=\s*\[\s*aws_s3_bucket_public_access_block\.terraform_state\s*\]', "Backend S3 bucket policy must wait for public access block settings")
     assert_contains(backend, r'DenyInsecureTransport', "Backend S3 bucket policy must deny non-TLS access")
@@ -146,6 +172,7 @@ def main() -> int:
     assert_contains(readme, r'shaka-prod-terraform-locks', "README must document the production backend lock table")
     assert_contains(readme, r'terraform init -reconfigure', "README must document remote backend reconfiguration")
     assert_contains(readme, r'lifecycle cost controls', "README must document backend lifecycle cost controls")
+    assert_contains(readme, r'S3 server access logging|access logging', "README must document state bucket access logging")
     assert_contains(readme, r'deletion protection', "README must document backend lock table deletion protection")
     assert_contains(readme, r'Auden.*approv|approv.*Auden', "README must keep production apply behind explicit Auden approval")
     assert_contains(readme, r'VPC.*EC2.*RDS|EC2.*RDS.*VPC', "README must document the combined VPC + EC2 + RDS production apply path")
