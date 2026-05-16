@@ -45,14 +45,31 @@ def assert_not_contains(text: str, pattern: str, message: str) -> None:
         raise AssertionError(message)
 
 
+def regex_group(text: str, pattern: str, message: str) -> str:
+    match = re.search(pattern, text, flags=re.IGNORECASE | re.MULTILINE | re.DOTALL)
+    if not match:
+        raise AssertionError(message)
+    return match.group(1)
+
+
 def main() -> int:
     tf = all_tf()
     backend = backend_tf()
 
-    assert_contains(tf, r'backend\s+"s3"\s+\{[^}]*bucket\s*=\s*"dannawagyu-shaka-prod-terraform-state"', "Production Terraform must use the approved S3 remote backend bucket")
+    backend_bucket = regex_group(tf, r'backend\s+"s3"\s+\{[^}]*bucket\s*=\s*"([^"]+)"', "Production Terraform must use an S3 remote backend bucket")
+    backend_lock_table = regex_group(tf, r'backend\s+"s3"\s+\{[^}]*dynamodb_table\s*=\s*"([^"]+)"', "Production Terraform backend must use DynamoDB locking")
+    default_bucket = regex_group(backend, r'variable\s+"state_bucket_name"\s+\{.*?default\s*=\s*"([^"]+)"', "Backend bootstrap must define a default state bucket name")
+    default_lock_table = regex_group(backend, r'variable\s+"lock_table_name"\s+\{.*?default\s*=\s*"([^"]+)"', "Backend bootstrap must define a default lock table name")
+    if backend_bucket != default_bucket:
+        raise AssertionError("Production backend bucket must match terraform/bootstrap/backend state_bucket_name default")
+    if backend_lock_table != default_lock_table:
+        raise AssertionError("Production backend lock table must match terraform/bootstrap/backend lock_table_name default")
+    if not re.search(r'shaka.*terraform.*state|terraform.*state.*shaka', backend_bucket, flags=re.IGNORECASE):
+        raise AssertionError("Production backend bucket name must be Shaka-specific and Terraform-state-specific")
+
     assert_contains(tf, r'backend\s+"s3"\s+\{[^}]*key\s*=\s*"prod/terraform\.tfstate"', "Production Terraform backend key must be prod/terraform.tfstate")
     assert_contains(tf, r'backend\s+"s3"\s+\{[^}]*region\s*=\s*"ap-northeast-2"', "Production Terraform backend must use ap-northeast-2")
-    assert_contains(tf, r'backend\s+"s3"\s+\{[^}]*dynamodb_table\s*=\s*"shaka-prod-terraform-locks"', "Production Terraform backend must use DynamoDB locking")
+    assert_contains(tf, rf'backend\s+"s3"\s+\{{[^}}]*dynamodb_table\s*=\s*"{re.escape(default_lock_table)}"', "Production Terraform backend must use the bootstrap DynamoDB lock table")
     assert_contains(tf, r'backend\s+"s3"\s+\{[^}]*encrypt\s*=\s*true', "Production Terraform backend encryption must be enabled")
 
     assert_contains(backend, r'resource\s+"aws_s3_bucket"\s+"terraform_state"', "Backend bootstrap must create the Terraform state S3 bucket")
@@ -60,12 +77,18 @@ def main() -> int:
     assert_contains(backend, r'resource\s+"aws_s3_bucket_server_side_encryption_configuration"\s+"terraform_state".*sse_algorithm\s*=\s*"AES256"', "Backend S3 bucket encryption must use AES256 unless KMS is explicitly reviewed")
     assert_contains(backend, r'resource\s+"aws_s3_bucket_public_access_block"\s+"terraform_state".*block_public_acls\s*=\s*true.*block_public_policy\s*=\s*true.*ignore_public_acls\s*=\s*true.*restrict_public_buckets\s*=\s*true', "Backend S3 bucket must block all public access paths")
     assert_contains(backend, r'resource\s+"aws_s3_bucket_ownership_controls"\s+"terraform_state".*object_ownership\s*=\s*"BucketOwnerEnforced"', "Backend S3 bucket must enforce bucket-owner object ownership")
+    assert_contains(backend, r'resource\s+"aws_s3_bucket_lifecycle_configuration"\s+"terraform_state"', "Backend S3 bucket must define lifecycle cost controls")
+    assert_contains(backend, r'abort_incomplete_multipart_upload\s+\{[^}]*days_after_initiation\s*=\s*7', "Backend S3 lifecycle must abort incomplete multipart uploads after 7 days")
+    assert_contains(backend, r'noncurrent_version_transition\s+\{[^}]*noncurrent_days\s*=\s*90[^}]*storage_class\s*=\s*"STANDARD_IA"', "Backend S3 lifecycle must transition noncurrent state versions without expiring them")
+    assert_not_contains(backend, r'noncurrent_version_expiration|expiration\s+\{', "Backend S3 lifecycle must not expire Terraform state history")
     assert_contains(backend, r'resource\s+"aws_s3_bucket_policy"\s+"terraform_state"', "Backend S3 bucket must have an access-control bucket policy")
+    assert_contains(backend, r'depends_on\s*=\s*\[\s*aws_s3_bucket_public_access_block\.terraform_state\s*\]', "Backend S3 bucket policy must wait for public access block settings")
     assert_contains(backend, r'DenyInsecureTransport', "Backend S3 bucket policy must deny non-TLS access")
     assert_contains(backend, r'resource\s+"aws_dynamodb_table"\s+"terraform_locks".*billing_mode\s*=\s*"PAY_PER_REQUEST"', "Backend lock table must use on-demand billing")
     assert_contains(backend, r'hash_key\s*=\s*"LockID"', "Backend lock table hash key must be LockID")
     assert_contains(backend, r'attribute\s+\{[^}]*name\s*=\s*"LockID"[^}]*type\s*=\s*"S"', "Backend lock table LockID attribute must be a string")
     assert_contains(backend, r'server_side_encryption\s+\{[^}]*enabled\s*=\s*true', "Backend lock table server-side encryption must be enabled")
+    assert_contains(backend, r'deletion_protection_enabled\s*=\s*true', "Backend lock table deletion protection must be enabled")
     assert_contains(backend, r'prevent_destroy\s*=\s*true', "Backend bucket/table must be guarded with prevent_destroy")
 
     assert_contains(tf, r'resource\s+"aws_vpc"\s+"shaka"', "Terraform-managed production VPC is required")
@@ -122,6 +145,8 @@ def main() -> int:
     assert_contains(readme, r'dannawagyu-shaka-prod-terraform-state', "README must document the production backend bucket")
     assert_contains(readme, r'shaka-prod-terraform-locks', "README must document the production backend lock table")
     assert_contains(readme, r'terraform init -reconfigure', "README must document remote backend reconfiguration")
+    assert_contains(readme, r'lifecycle cost controls', "README must document backend lifecycle cost controls")
+    assert_contains(readme, r'deletion protection', "README must document backend lock table deletion protection")
     assert_contains(readme, r'Auden.*approv|approv.*Auden', "README must keep production apply behind explicit Auden approval")
     assert_contains(readme, r'VPC.*EC2.*RDS|EC2.*RDS.*VPC', "README must document the combined VPC + EC2 + RDS production apply path")
     assert_contains(readme, r'import', "README must document existing EC2/VPC import or reference path")

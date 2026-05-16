@@ -54,9 +54,38 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "terraform_state" 
   }
 }
 
+resource "aws_s3_bucket_lifecycle_configuration" "terraform_state" {
+  bucket = aws_s3_bucket.terraform_state.id
+
+  rule {
+    id     = "abort-incomplete-multipart-uploads"
+    status = "Enabled"
+
+    filter {}
+
+    abort_incomplete_multipart_upload {
+      days_after_initiation = 7
+    }
+  }
+
+  rule {
+    id     = "transition-noncurrent-state-versions"
+    status = "Enabled"
+
+    filter {}
+
+    noncurrent_version_transition {
+      noncurrent_days = 90
+      storage_class   = "STANDARD_IA"
+    }
+  }
+}
+
 resource "aws_s3_bucket_policy" "terraform_state" {
   bucket = aws_s3_bucket.terraform_state.id
   policy = data.aws_iam_policy_document.terraform_state.json
+
+  depends_on = [aws_s3_bucket_public_access_block.terraform_state]
 }
 
 data "aws_iam_policy_document" "terraform_state" {
@@ -101,6 +130,8 @@ resource "aws_dynamodb_table" "terraform_locks" {
   point_in_time_recovery {
     enabled = true
   }
+
+  deletion_protection_enabled = true
 
   tags = merge(local.common_tags, {
     Name = var.lock_table_name
