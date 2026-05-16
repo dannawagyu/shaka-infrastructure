@@ -1,0 +1,105 @@
+name: Hermes PR Review
+
+on:
+  pull_request:
+    types: [opened, reopened, ready_for_review]
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+concurrency:
+  group: hermes-pr-review-${{ github.event.pull_request.number || github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  hermes-pr-review:
+    runs-on: [self-hosted, hermes-pr-review]
+    if: >
+      github.event_name == 'pull_request' ||
+      (github.event_name == 'issue_comment' && github.event.issue.pull_request)
+    env:
+      HERMES_WORKSPACE: /Users/dannawagyu/hermes-workspace
+    steps:
+      - name: Prepare event fields
+        id: plan
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            if [ "${{ github.event.pull_request.head.repo.full_name }}" != "${{ github.repository }}" ]; then
+              case "${{ github.event.pull_request.author_association }}" in
+                OWNER|MEMBER|COLLABORATOR) ;;
+                *) echo "skip=true" >> "$GITHUB_OUTPUT"; echo "reason=untrusted_author" >> "$GITHUB_OUTPUT"; exit 0 ;;
+              esac
+            fi
+            echo "pr=${{ github.event.pull_request.number }}" >> "$GITHUB_OUTPUT"
+            echo "mode=initial" >> "$GITHUB_OUTPUT"
+            echo "reviewers=hermes-development,hermes-security" >> "$GITHUB_OUTPUT"
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "pr=${{ github.event.issue.number }}" >> "$GITHUB_OUTPUT"
+            echo "mode=rereview" >> "$GITHUB_OUTPUT"
+            python -c 'import json, os; event=json.load(open(os.environ["GITHUB_EVENT_PATH"])); print(event.get("comment", {}).get("body", ""))' > /tmp/hermes-comment-body.txt
+            set +e
+            python "$HERMES_WORKSPACE/shared/github/pr-review/scripts/parse-review-command.py" \
+              --body-file /tmp/hermes-comment-body.txt \
+              --actor "${{ github.actor }}" \
+              --author-association "${{ github.event.comment.author_association }}" \
+              --github-output "$GITHUB_OUTPUT"
+            status=$?
+            set -e
+            if [ "$status" -eq 78 ]; then
+              echo "skip=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            exit "$status"
+          fi
+
+      - name: Collect PR context
+        id: context
+        if: steps.plan.outputs.skip != 'true' && github.event.pull_request.draft != true
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          comment_arg=()
+          if [ -f /tmp/hermes-comment-body.txt ]; then
+            comment_arg=(--comment-body-file /tmp/hermes-comment-body.txt)
+          fi
+          python "$HERMES_WORKSPACE/shared/github/pr-review/scripts/collect-pr-context.py" \
+            --repo "${{ github.repository }}" \
+            --pr "${{ steps.plan.outputs.pr }}" \
+            --event "${{ github.event_name }}" \
+            --mode "${{ steps.plan.outputs.mode }}" \
+            --actor "${{ github.actor }}" \
+            "${comment_arg[@]}" \
+            --output /tmp/hermes-pr-context.json
+          python -c 'import json; p=json.load(open("/tmp/hermes-pr-context.json")); print("draft=" + str(p.get("pr", {}).get("draft", False)).lower())' >> "$GITHUB_OUTPUT"
+
+      - name: Run Hermes reviewers
+        if: steps.plan.outputs.skip != 'true' && steps.context.outputs.draft != 'true' && github.event.pull_request.draft != true
+        shell: bash
+        run: |
+          set -euo pipefail
+          python "$HERMES_WORKSPACE/shared/github/pr-review/scripts/run-pr-review.py" \
+            --payload /tmp/hermes-pr-context.json \
+            --reviewers "${{ steps.plan.outputs.reviewers }}" \
+            --output-dir /tmp/hermes-pr-review
+
+      - name: Post PR comments
+        if: steps.plan.outputs.skip != 'true' && steps.context.outputs.draft != 'true' && github.event.pull_request.draft != true
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python "$HERMES_WORKSPACE/shared/github/pr-review/scripts/post-pr-comments.py" \
+            --repo "${{ github.repository }}" \
+            --pr "${{ steps.plan.outputs.pr }}" \
+            --manifest /tmp/hermes-pr-review/manifest.json \
+            --post-inline
