@@ -20,7 +20,7 @@ class GitHubActionsProductionTest(unittest.TestCase):
         self.assertNotIn("SHAKA_VPC_ID", text)
         self.assertNotIn("SHAKA_PUBLIC_SUBNET_ID", text)
         self.assertIn("terraform plan -out=production.tfplan", text)
-        self.assertIn("Production apply is disabled until a remote Terraform backend is configured", text)
+        self.assertIn("Production apply remains disabled until Auden approves the cutover workflow", text)
         self.assertNotIn("terraform apply -auto-approve production.tfplan", text)
         self.assertNotIn("apply-production", text)
         self.assertNotIn("\nenvironment: production\n", text.split("jobs:", 1)[0])

@@ -45,9 +45,18 @@ RDS is private and accepts MySQL only from the Terraform-managed EC2 app securit
 
 ## Apply gate
 
-The workflow is intentionally plan-only for this PR. It runs `terraform plan` so production variables, credentials, and resource changes can be validated without creating state on an ephemeral GitHub Actions runner.
+The workflow is intentionally plan-only for this PR. It runs `terraform plan` so production variables, credentials, backend initialization, and resource changes can be validated without creating or changing production infrastructure.
 
-`terraform apply` is disabled until a production remote backend with encryption, locking, access controls, and an approved state migration path is configured. Before enabling apply, the existing server should be intentionally drained/stopped and the resulting plan should be reviewed for the expected EC2 + RDS creation path. Do not use this workflow to destroy production RDS; the database has `deletion_protection` and Terraform `prevent_destroy` enabled.
+The production root now expects the S3 backend created by `terraform/bootstrap/backend`: bucket `dannawagyu-shaka-prod-terraform-state`, key `prod/terraform.tfstate`, region `ap-northeast-2`, and DynamoDB lock table `shaka-prod-terraform-locks`. Bootstrap that backend once with approved AWS credentials, then initialize production with:
+
+```bash
+cd terraform/environments/prod
+terraform init -reconfigure
+```
+
+If local production state already exists, use `terraform init -migrate-state` only after explicit Auden/operator approval and a local state backup. If no production state exists yet, initialize fresh remote state.
+
+`terraform apply` remains disabled until Auden separately approves enabling production apply. Before enabling apply, the existing server should be intentionally drained/stopped and the resulting plan should be reviewed for the expected EC2 + RDS creation path. Do not use this workflow to destroy production RDS; the database has `deletion_protection` and Terraform `prevent_destroy` enabled.
 
 ## Grafana credential handling
 
