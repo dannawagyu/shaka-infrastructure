@@ -15,6 +15,10 @@ on:
           - cleanup-accidental-stack-apply
           - bootstrap-backend-plan
           - bootstrap-backend-apply
+      accidental_vpc_id:
+        description: "Optional accidental VPC ID for cleanup when stale Terraform state has already been removed"
+        required: false
+        type: string
       apply_confirmation:
         description: "Required for apply commands: apply-production, cleanup-accidental-stack, or bootstrap-production-backend"
         required: false
@@ -43,6 +47,7 @@ jobs:
       TF_VAR_existing_app_instance_id: ${{ vars.SHAKA_EXISTING_APP_INSTANCE_ID }}
       TF_VAR_existing_app_security_group_id: ${{ vars.SHAKA_EXISTING_APP_SECURITY_GROUP_ID }}
       TF_VAR_database_name: ${{ vars.SHAKA_DATABASE_NAME || 'shaka' }}
+      SHAKA_ACCIDENTAL_VPC_ID: ${{ inputs.accidental_vpc_id }}
       TF_VAR_db_username: ${{ secrets.SHAKA_DB_USERNAME }}
       TF_VAR_db_password: ${{ secrets.SHAKA_DB_PASSWORD }}
     steps:

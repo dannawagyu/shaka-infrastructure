@@ -28,6 +28,8 @@ class GitHubActionsProductionTest(unittest.TestCase):
         self.assertIn("terraform -chdir=terraform/environments/prod output", text)
         self.assertIn("cleanup-accidental-stack-plan", text)
         self.assertIn("cleanup-accidental-stack-apply", text)
+        self.assertIn("accidental_vpc_id:", text)
+        self.assertIn("SHAKA_ACCIDENTAL_VPC_ID: ${{ inputs.accidental_vpc_id }}", text)
         self.assertIn("apply_confirmation=cleanup-accidental-stack", text)
         self.assertIn("./scripts/cleanup-accidental-prod-stack.sh plan", text)
         self.assertIn("./scripts/cleanup-accidental-prod-stack.sh apply", text)

@@ -68,6 +68,7 @@ existing_vpc_id="$(aws ec2 describe-subnets \
 
 accidental_instance_id="$(state_id aws_instance.app || true)"
 accidental_vpc_id="$(state_id aws_vpc.shaka || true)"
+accidental_vpc_id="${accidental_vpc_id:-${SHAKA_ACCIDENTAL_VPC_ID:-}}"
 accidental_igw_id="$(state_id aws_internet_gateway.shaka || true)"
 accidental_app_sg_id="$(state_id aws_security_group.app || true)"
 accidental_rds_sg_id="$(state_id aws_security_group.rds || true)"
@@ -78,6 +79,49 @@ accidental_public_rt_id="$(state_id aws_route_table.public || true)"
 accidental_private_rt_id="$(state_id aws_route_table.private || true)"
 accidental_db_identifier="$(state_attr aws_db_instance.shaka identifier || true)"
 accidental_db_subnet_group="$(state_id aws_db_subnet_group.shaka || true)"
+
+if [[ -n "$accidental_vpc_id" ]]; then
+  if [[ -z "$accidental_igw_id" ]]; then
+    accidental_igw_id="$(aws ec2 describe-internet-gateways \
+      --filters "Name=attachment.vpc-id,Values=$accidental_vpc_id" \
+      --query 'InternetGateways[0].InternetGatewayId' --output text 2>/dev/null | sed 's/^None$//' || true)"
+  fi
+  if [[ -z "$accidental_app_sg_id" ]]; then
+    accidental_app_sg_id="$(aws ec2 describe-security-groups \
+      --filters "Name=vpc-id,Values=$accidental_vpc_id" "Name=group-name,Values=shaka-prod-app" \
+      --query 'SecurityGroups[0].GroupId' --output text 2>/dev/null | sed 's/^None$//' || true)"
+  fi
+  if [[ -z "$accidental_rds_sg_id" ]]; then
+    accidental_rds_sg_id="$(aws ec2 describe-security-groups \
+      --filters "Name=vpc-id,Values=$accidental_vpc_id" "Name=group-name,Values=shaka-prod-rds" \
+      --query 'SecurityGroups[0].GroupId' --output text 2>/dev/null | sed 's/^None$//' || true)"
+  fi
+  if [[ -z "$accidental_public_subnet_id" ]]; then
+    accidental_public_subnet_id="$(aws ec2 describe-subnets \
+      --filters "Name=vpc-id,Values=$accidental_vpc_id" "Name=tag:Name,Values=shaka-prod-public-app" \
+      --query 'Subnets[0].SubnetId' --output text 2>/dev/null | sed 's/^None$//' || true)"
+  fi
+  if [[ -z "$accidental_rds_subnet_0_id" ]]; then
+    accidental_rds_subnet_0_id="$(aws ec2 describe-subnets \
+      --filters "Name=vpc-id,Values=$accidental_vpc_id" "Name=tag:Name,Values=shaka-prod-private-rds-1" \
+      --query 'Subnets[0].SubnetId' --output text 2>/dev/null | sed 's/^None$//' || true)"
+  fi
+  if [[ -z "$accidental_rds_subnet_1_id" ]]; then
+    accidental_rds_subnet_1_id="$(aws ec2 describe-subnets \
+      --filters "Name=vpc-id,Values=$accidental_vpc_id" "Name=tag:Name,Values=shaka-prod-private-rds-2" \
+      --query 'Subnets[0].SubnetId' --output text 2>/dev/null | sed 's/^None$//' || true)"
+  fi
+  if [[ -z "$accidental_public_rt_id" ]]; then
+    accidental_public_rt_id="$(aws ec2 describe-route-tables \
+      --filters "Name=vpc-id,Values=$accidental_vpc_id" "Name=tag:Name,Values=shaka-prod-public" \
+      --query 'RouteTables[0].RouteTableId' --output text 2>/dev/null | sed 's/^None$//' || true)"
+  fi
+  if [[ -z "$accidental_private_rt_id" ]]; then
+    accidental_private_rt_id="$(aws ec2 describe-route-tables \
+      --filters "Name=vpc-id,Values=$accidental_vpc_id" "Name=tag:Name,Values=shaka-prod-private" \
+      --query 'RouteTables[0].RouteTableId' --output text 2>/dev/null | sed 's/^None$//' || true)"
+  fi
+fi
 
 log "existing app instance: $existing_instance_id"
 log "existing app subnet:   $existing_subnet_id"
@@ -157,7 +201,7 @@ for rule_addr in \
   fi
 done
 
-for sg_id in "$accidental_app_sg_id" "$accidental_rds_sg_id"; do
+for sg_id in "$accidental_rds_sg_id" "$accidental_app_sg_id"; do
   if [[ -n "$sg_id" ]]; then
     aws_try aws ec2 delete-security-group --group-id "$sg_id"
   fi
