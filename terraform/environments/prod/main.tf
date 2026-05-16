@@ -90,7 +90,7 @@ resource "aws_db_instance" "shaka" {
   copy_tags_to_snapshot     = true
   deletion_protection       = true
   skip_final_snapshot       = false
-  final_snapshot_identifier = "${local.name_prefix}-mysql-final-${formatdate("YYYYMMDDhhmmss", timestamp())}"
+  final_snapshot_identifier = "${local.name_prefix}-mysql-final"
 
   tags = merge(local.common_tags, {
     Name = "${local.name_prefix}-mysql"
