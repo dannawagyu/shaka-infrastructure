@@ -2,12 +2,16 @@ name: Hermes PR Review
 
 on:
   pull_request:
+    # synchronize is intentionally omitted to avoid noisy repeated full reviews;
+    # request re-review explicitly with the issue_comment commands below.
     types: [opened, reopened, ready_for_review]
   issue_comment:
     types: [created]
 
 permissions:
   contents: read
+  # Write permissions are used only by the final posting step; reviewer generation
+  # does not receive GITHUB_TOKEN and only emits markdown from PR API context.
   pull-requests: write
   issues: write
 
@@ -20,7 +24,31 @@ jobs:
     runs-on: [self-hosted, hermes-pr-review]
     if: >
       github.event_name == 'pull_request' ||
-      (github.event_name == 'issue_comment' && github.event.issue.pull_request)
+      (
+        github.event_name == 'issue_comment' &&
+        github.event.issue.pull_request &&
+        !contains(github.event.comment.body, '<!-- hermes-pr-review:') &&
+        (
+          github.event.comment.author_association == 'OWNER' ||
+          github.event.comment.author_association == 'MEMBER' ||
+          github.event.comment.author_association == 'COLLABORATOR'
+        ) &&
+        (
+          contains(github.event.comment.body, '@hermes development') ||
+          contains(github.event.comment.body, '/hermes development') ||
+          contains(github.event.comment.body, '/development') ||
+          contains(github.event.comment.body, '@vulcan') ||
+          contains(github.event.comment.body, '/vulcan') ||
+          contains(github.event.comment.body, '@hermes security') ||
+          contains(github.event.comment.body, '/hermes security') ||
+          contains(github.event.comment.body, '/security') ||
+          contains(github.event.comment.body, '@athena') ||
+          contains(github.event.comment.body, '/athena') ||
+          contains(github.event.comment.body, '@hermes review all') ||
+          contains(github.event.comment.body, '/hermes review all') ||
+          contains(github.event.comment.body, '/review all')
+        )
+      )
     env:
       HERMES_WORKSPACE: /Users/dannawagyu/hermes-workspace
     steps:
