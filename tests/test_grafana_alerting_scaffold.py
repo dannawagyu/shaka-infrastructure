@@ -95,6 +95,7 @@ class GrafanaAlertingScaffoldTest(unittest.TestCase):
             'target_label = "service_name"',
             'target_label = "deployment_environment"',
             'unit_include = "^(shaka-server|nginx|alloy)\\\\.service$"',
+            'enable_collectors = ["systemd"]',
             'ExecStartPre=/usr/local/sbin/validate-alloy-grafana-cloud-env',
             'owner_group="$(stat -c',
             '(permissions & 8#077) != 0',
@@ -104,6 +105,7 @@ class GrafanaAlertingScaffoldTest(unittest.TestCase):
         ]:
             self.assertIn(phrase, user_data, f"user_data missing phrase: {phrase}")
         self.assertNotIn("glc_", user_data)
+        self.assertNotRegex(user_data, r"(?m)^\\s*enabled_collectors\\s*=")
 
 
 if __name__ == "__main__":
