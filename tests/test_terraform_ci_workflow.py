@@ -17,7 +17,7 @@ class TerraformCIWorkflowTest(unittest.TestCase):
     def test_pr_validation_runs_on_main_with_least_privilege(self):
         self.assertIn("name: Terraform CI", self.workflow)
         self.assertIn("pull_request:", self.workflow)
-        self.assertRegex(self.workflow, r"pull_request:\n\s+branches:\n\s+- main")
+        self.assertRegex(self.workflow, r"(?s)pull_request:.*?branches:.*?-\s*main")
         self.assertIn("push:", self.workflow)
         self.assertIn("permissions:\n  contents: read", self.workflow)
         self.assertNotIn("id-token: write", self.workflow)
@@ -45,8 +45,9 @@ class TerraformCIWorkflowTest(unittest.TestCase):
             self.assertRegex(action_ref, r"@[0-9a-f]{40}$", f"unpinned action: {action_ref}")
 
     def test_validation_script_runs_static_tests_and_all_terraform_roots(self):
+        self.assertRegex(self.script, r"python3\s+\"\$ROOT/tests/terraform_static_checks\.py\"")
         self.assertIn("python3 -m unittest discover -s", self.script)
-        self.assertIn("terraform -chdir=\"$ROOT\" fmt -check -recursive", self.script)
+        self.assertRegex(self.script, r"terraform\s+-chdir=\"\$ROOT\"\s+fmt\s+-check\s+-recursive")
         self.assertIn("terraform/environments/prod", self.script)
         self.assertIn("terraform/observability/grafana", self.script)
         self.assertIn("init -backend=false -input=false", self.script)

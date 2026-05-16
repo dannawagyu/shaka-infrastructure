@@ -7,6 +7,7 @@ export AWS_EC2_METADATA_DISABLED="${AWS_EC2_METADATA_DISABLED:-true}"
 export TF_IN_AUTOMATION="${TF_IN_AUTOMATION:-true}"
 export TF_INPUT="false"
 
+python3 "$ROOT/tests/terraform_static_checks.py"
 python3 -m unittest discover -s "$ROOT/tests" -v
 
 if ! command -v terraform >/dev/null 2>&1; then
