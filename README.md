@@ -39,7 +39,7 @@ At minimum Auden/operator should fill:
 
 - `operator_ssh_cidr`
 - `ssh_key_name`
-- `app_ami_id`
+- `app_ami_id` is optional; leave it unset to resolve the latest Canonical Ubuntu 24.04 amd64 AMI automatically, or pin a known-good AMI ID after verifying it exists in `ap-northeast-2`.
 - `db_username`
 - `db_password`
 
@@ -60,7 +60,7 @@ Pull requests targeting `main` run `.github/workflows/terraform-ci.yml` automati
 - Runs `terraform init -backend=false -input=false` and `terraform validate` for each committed Terraform root that can be validated without production secrets: `terraform/environments/prod` and `terraform/observability/grafana`.
 - Uses only `contents: read` GitHub permissions, pinned third-party actions, and no `secrets.*`, production environment, `terraform plan`, or `terraform apply` steps on PRs. Fork PRs must continue to run without repository or environment secrets; any future cloud credential setup belongs in the manual production workflow, not PR CI.
 
-Required branch policy for `main`: require pull requests, require the `Terraform validation` status check from the `Terraform CI` workflow, require conversation resolution, and block force pushes/deletions. The manual `.github/workflows/terraform-production.yml` workflow remains environment-gated and plan-only until remote backend/state handling is explicitly approved.
+Required branch policy for `main`: require pull requests, require the `Terraform validation` status check from the `Terraform CI` workflow, require conversation resolution, and block force pushes/deletions. The manual `.github/workflows/terraform-production.yml` workflow remains environment-gated; production apply requires both the `production` environment and `apply_confirmation=apply-production`.
 
 ## State and secrets handling
 
@@ -97,7 +97,7 @@ terraform plan \
 
 For static validation without contacting the remote backend, `./scripts/validate-prod-terraform.sh` still uses `terraform init -backend=false` in `terraform/environments/prod/`.
 
-Do not enable production `terraform apply` in GitHub Actions until Auden approves the EC2/RDS cutover workflow separately. The current production workflow remains manual and plan-only even after the remote backend exists.
+Production `terraform apply` in GitHub Actions is manual-only and protected by the `production` environment plus `apply_confirmation=apply-production`. Review the generated plan before dispatching apply.
 
 ## Guarded deletion behavior
 
