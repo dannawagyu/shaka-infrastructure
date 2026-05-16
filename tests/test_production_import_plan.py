@@ -34,16 +34,15 @@ class ProductionImportPlanTest(unittest.TestCase):
 
     def test_terraform_data_scaffold_uses_existing_ids_and_no_rebuild(self):
         text = TF.read_text()
-        for name in ["existing_app_instance_id", "existing_public_subnet_id"]:
+        for name in ["existing_app_instance_id", "existing_app_security_group_id"]:
             self.assertIn(f'variable "{name}"', text)
-        self.assertNotIn('variable "existing_app_security_group_id"', text)
-        self.assertIn('variable "existing_vpc_id"', text)
-        self.assertNotIn("id = var.app_security_group_id", text)
-        self.assertIn("id    = var.existing_vpc_id", text)
-        for data in ["aws_instance", "aws_vpc", "aws_subnet"]:
-            self.assertIn(f'data "{data}"', text)
+        self.assertIn('data "aws_instance" "existing_app"', text)
+        self.assertIn("instance_id = var.existing_app_instance_id", text)
+        self.assertIn('data "aws_subnet" "existing_public"', text)
+        self.assertIn("id = data.aws_instance.existing_app.subnet_id", text)
         self.assertNotIn('resource "aws_instance"', text)
         self.assertNotIn('resource "aws_eip"', text)
+        self.assertNotIn('resource "aws_vpc"', text)
 
 if __name__ == "__main__":
     unittest.main()

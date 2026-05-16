@@ -12,18 +12,18 @@ Terraform baseline for Shaka production AWS infrastructure.
 
 ## Production baseline
 
-This first PR intentionally keeps scope small and low cost:
+This baseline intentionally keeps the fixed-IP/domain production app server canonical and limits Terraform changes to the RDS path:
 
-- Creates a Terraform-managed production VPC, public app subnet, private RDS subnets, Internet Gateway, route tables, and security groups.
-- Creates the production EC2 app host and the private, Single-AZ MySQL RDS instance in one Terraform stack so the final cutover can be a reviewed VPC + EC2 + RDS apply.
-- Creates a Terraform-managed app security group for SSH/HTTP/HTTPS only, with IMDSv2 required on the EC2 instance.
+- References the existing Shaka production EC2 app host with `data "aws_instance" "existing_app"`; Terraform must not create a replacement app EC2, VPC, Internet Gateway, or public subnet while the fixed server IP and DNS remain in use.
+- Creates Terraform-managed private RDS subnets inside the existing app VPC, plus a private route table for those subnets.
+- Creates the private, Single-AZ MySQL RDS instance and an RDS security group.
 - Defaults RDS to `db.t4g.micro`; `db.t3.micro` is allowed only as a documented fallback if Graviton/T4g is unavailable in the selected region.
 - Uses 20 GiB of encrypted GP3 storage with modest autoscaling, no Multi-AZ, no NAT Gateway, no RDS Proxy, and no cross-region backup/replication.
-- Allows inbound MySQL only from the Terraform-managed Shaka app EC2 security group. RDS has no public access path; DataGrip access should use SSH tunneling through the EC2 host.
+- Allows inbound MySQL only from the existing Shaka app EC2 security group. RDS has no public access path; DataGrip access should use SSH tunneling through the EC2 host.
 
 ## Existing EC2/VPC import or reference path
 
-This stack now manages the replacement/cutover VPC, EC2 app host, and RDS together. Fill production values in an ignored local file before local plan/apply:
+This stack now references the existing fixed-IP/domain Shaka EC2 app host and manages the RDS path around it. Fill production values in an ignored local file before local plan/apply:
 
 ```text
 terraform/environments/prod/production.local.tfvars
@@ -37,19 +37,16 @@ cp terraform/environments/prod/production.tfvars.example terraform/environments/
 
 At minimum Auden/operator should fill:
 
-- `operator_ssh_cidr`
-- `ssh_key_name`
-- `app_ami_id`
+- `existing_app_instance_id`
+- `existing_app_security_group_id`
 - `db_username`
 - `db_password`
 
-The VPC/subnet CIDR defaults can remain unless they overlap another network:
+The private RDS subnet CIDR defaults can remain only if they fit inside the existing app VPC CIDR and do not overlap existing subnets:
 
-- `vpc_cidr = "10.42.0.0/16"`
-- `public_subnet_cidr = "10.42.0.0/24"`
 - `private_subnet_cidrs = ["10.42.10.0/24", "10.42.11.0/24"]`
 
-The prior EC2/VPC can still be referenced through optional `existing_app_instance_id`, `existing_vpc_id`, and `existing_public_subnet_id` variables for inventory and no-op review before the cutover. If a future PR brings additional existing resources under Terraform management, use `terraform import` into explicit resources or modules before replacing these reference variables.
+The existing EC2/VPC remains the canonical app runtime. If a future PR brings additional existing resources under Terraform management, use `terraform import` into explicit resources or modules before replacing these data references. Do not reintroduce Terraform-created replacement EC2/VPC resources unless Auden explicitly approves an app-host cutover.
 
 ## Pull request CI and branch policy
 
@@ -72,7 +69,7 @@ Terraform state can contain sensitive values, including RDS credentials and prov
 - Bootstrap the backend once from `terraform/bootstrap/backend/` using approved AWS credentials, then run `terraform init -reconfigure` from `terraform/environments/prod/`.
 - If local production state already exists, run `terraform init -migrate-state` only after Auden/operator approval and a local state backup. Otherwise initialize fresh remote state.
 - Provide `db_username` and `db_password` through GitHub Environment `production` secrets (`SHAKA_DB_USERNAME`, `SHAKA_DB_PASSWORD` mapped to `TF_VAR_*`), local ignored `.tfvars`, or another approved secrets manager integration. Never commit secret variable files.
-- Do not pass Grafana Cloud remote-write credentials through Terraform `user_data`; the EC2 bootstrap reads them from `/etc/alloy/grafana-cloud.env` so they can be injected by the production deployment path without landing in Terraform state.
+- Production Terraform references the existing fixed-IP/domain EC2 host through GitHub Environment `production` variables `SHAKA_EXISTING_APP_INSTANCE_ID` and `SHAKA_EXISTING_APP_SECURITY_GROUP_ID`; it does not create replacement app-host compute or public networking.
 - Review generated plans carefully because plan files can also contain sensitive values.
 
 ## Safe workflow
