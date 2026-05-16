@@ -10,6 +10,12 @@ on:
         type: choice
         options:
           - plan
+          - bootstrap-backend-plan
+          - bootstrap-backend-apply
+      apply_confirmation:
+        description: "Required only for bootstrap-backend-apply: bootstrap-production-backend"
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -24,9 +30,6 @@ jobs:
     name: Terraform production ${{ inputs.command }}
     runs-on: ubuntu-latest
     environment: production
-    defaults:
-      run:
-        working-directory: terraform/environments/prod
     env:
       AWS_REGION: ${{ vars.AWS_REGION || 'ap-northeast-2' }}
       TF_IN_AUTOMATION: "true"
@@ -47,14 +50,25 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Validate plan-only command
+      - name: Validate command and confirmation
         shell: bash
         run: |
           set -euo pipefail
-          if [[ "${{ inputs.command }}" != "plan" ]]; then
-            echo "Production apply remains disabled until Auden approves the cutover workflow" >&2
-            exit 1
-          fi
+          case "${{ inputs.command }}" in
+            plan|bootstrap-backend-plan)
+              ;;
+            bootstrap-backend-apply)
+              if [[ "${{ inputs.apply_confirmation }}" != "bootstrap-production-backend" ]]; then
+                echo "bootstrap-backend-apply requires apply_confirmation=bootstrap-production-backend" >&2
+                exit 1
+              fi
+              ;;
+            *)
+              echo "Unsupported command: ${{ inputs.command }}" >&2
+              exit 1
+              ;;
+          esac
+          echo "Production app apply remains disabled until Auden approves the cutover workflow" >&2
 
       - name: Configure AWS credentials from production environment
         uses: aws-actions/configure-aws-credentials@v4
@@ -68,11 +82,14 @@ jobs:
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: 1.15.2
+          terraform_wrapper: false
 
       - name: Materialize non-secret production variables
+        if: ${{ inputs.command == 'plan' }}
         shell: bash
         run: |
           set -euo pipefail
+          cd terraform/environments/prod
           python3 - <<'PY'
           import json, os, pathlib
           required = [
@@ -98,14 +115,57 @@ jobs:
           pathlib.Path('production.auto.tfvars.json').write_text(json.dumps(data, indent=2), encoding='utf-8')
           PY
 
-      - name: Terraform fmt check
-        run: terraform fmt -check -recursive
+      - name: Terraform prod fmt check
+        if: ${{ inputs.command == 'plan' }}
+        run: terraform -chdir=terraform/environments/prod fmt -check -recursive
 
-      - name: Terraform init
-        run: terraform init
+      - name: Terraform prod init
+        if: ${{ inputs.command == 'plan' }}
+        run: terraform -chdir=terraform/environments/prod init
 
-      - name: Terraform validate
-        run: terraform validate
+      - name: Terraform prod validate
+        if: ${{ inputs.command == 'plan' }}
+        run: terraform -chdir=terraform/environments/prod validate
 
-      - name: Terraform plan
-        run: terraform plan -out=production.tfplan
+      - name: Terraform prod plan
+        if: ${{ inputs.command == 'plan' }}
+        run: terraform -chdir=terraform/environments/prod plan -out=production.tfplan
+
+      - name: Terraform backend fmt check
+        if: ${{ startsWith(inputs.command, 'bootstrap-backend-') }}
+        run: terraform -chdir=terraform/bootstrap/backend fmt -check -recursive
+
+      - name: Terraform backend init
+        if: ${{ startsWith(inputs.command, 'bootstrap-backend-') }}
+        run: terraform -chdir=terraform/bootstrap/backend init -input=false
+
+      - name: Terraform backend validate
+        if: ${{ startsWith(inputs.command, 'bootstrap-backend-') }}
+        run: terraform -chdir=terraform/bootstrap/backend validate
+
+      - name: Terraform backend plan
+        if: ${{ startsWith(inputs.command, 'bootstrap-backend-') }}
+        run: terraform -chdir=terraform/bootstrap/backend plan -input=false -out=backend.tfplan
+
+      - name: Terraform backend apply
+        if: ${{ inputs.command == 'bootstrap-backend-apply' }}
+        run: terraform -chdir=terraform/bootstrap/backend apply -input=false backend.tfplan
+
+      - name: Verify backend resources
+        if: ${{ inputs.command == 'bootstrap-backend-apply' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          STATE_BUCKET="dannawagyu-shaka-prod-terraform-state"
+          LOG_BUCKET="dannawagyu-shaka-prod-terraform-state-logs"
+          LOCK_TABLE="shaka-prod-terraform-locks"
+
+          aws s3api get-bucket-versioning --bucket "$STATE_BUCKET"
+          aws s3api get-bucket-encryption --bucket "$STATE_BUCKET"
+          aws s3api get-public-access-block --bucket "$STATE_BUCKET"
+          aws s3api get-bucket-logging --bucket "$STATE_BUCKET"
+          aws s3api get-bucket-encryption --bucket "$LOG_BUCKET"
+          aws s3api get-public-access-block --bucket "$LOG_BUCKET"
+          aws dynamodb describe-table \
+            --table-name "$LOCK_TABLE" \
+            --query 'Table.{TableName:TableName,BillingMode:BillingModeSummary.BillingMode,HashKey:KeySchema[0].AttributeName,SSE:SSEDescription.Status,DeletionProtection:DeletionProtectionEnabled}'

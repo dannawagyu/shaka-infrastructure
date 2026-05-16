@@ -43,11 +43,17 @@ Then fill `production.local.tfvars`. Do not commit it. The most important values
 
 RDS is private and accepts MySQL only from the Terraform-managed EC2 app security group. Do not open RDS to an operator IP. For DataGrip, use an SSH tunnel through the EC2 host and connect to the RDS endpoint through that tunnel.
 
-## Apply gate
+## Backend bootstrap and apply gates
 
-The workflow is intentionally plan-only for this PR. It runs `terraform plan` so production variables, credentials, backend initialization, and resource changes can be validated without creating or changing production infrastructure.
+The workflow supports three manual commands:
 
-The production root now expects the S3 backend created by `terraform/bootstrap/backend`: bucket `dannawagyu-shaka-prod-terraform-state`, key `prod/terraform.tfstate`, region `ap-northeast-2`, and DynamoDB lock table `shaka-prod-terraform-locks`. Bootstrap that backend once with approved AWS credentials, then initialize production with:
+- `plan`: production root plan only. This initializes `terraform/environments/prod` against the remote backend and runs `terraform plan`; it does not apply app/EC2/RDS infrastructure.
+- `bootstrap-backend-plan`: plans only the one-time backend bootstrap root at `terraform/bootstrap/backend`.
+- `bootstrap-backend-apply`: applies only the backend bootstrap root. This requires `apply_confirmation=bootstrap-production-backend` and uses the `production` GitHub Environment plus `AWS_ROLE_TO_ASSUME`.
+
+Production app/EC2/RDS `terraform apply` remains disabled until Auden separately approves enabling the cutover workflow. Before enabling app apply, the existing server should be intentionally drained/stopped and the resulting plan should be reviewed for the expected EC2 + RDS creation path. Do not use this workflow to destroy production RDS; the database has `deletion_protection` and Terraform `prevent_destroy` enabled.
+
+The production root now expects the S3 backend created by `terraform/bootstrap/backend`: bucket `dannawagyu-shaka-prod-terraform-state`, key `prod/terraform.tfstate`, region `ap-northeast-2`, and DynamoDB lock table `shaka-prod-terraform-locks`. After bootstrap succeeds, initialize production with:
 
 ```bash
 cd terraform/environments/prod
@@ -55,8 +61,6 @@ terraform init -reconfigure
 ```
 
 If local production state already exists, use `terraform init -migrate-state` only after explicit Auden/operator approval and a local state backup. If no production state exists yet, initialize fresh remote state.
-
-`terraform apply` remains disabled until Auden separately approves enabling production apply. Before enabling apply, the existing server should be intentionally drained/stopped and the resulting plan should be reviewed for the expected EC2 + RDS creation path. Do not use this workflow to destroy production RDS; the database has `deletion_protection` and Terraform `prevent_destroy` enabled.
 
 ## Grafana credential handling
 
