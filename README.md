@@ -56,7 +56,7 @@ Terraform state can contain sensitive values, including RDS credentials and prov
 
 - Do not commit `.terraform/`, `terraform.tfstate*`, `*.tfvars`, generated plans, or credentials.
 - Production Terraform now expects the encrypted S3 remote backend created by `terraform/bootstrap/backend/`: bucket `dannawagyu-shaka-prod-terraform-state`, state key `prod/terraform.tfstate`, region `ap-northeast-2`, and DynamoDB lock table `shaka-prod-terraform-locks`.
-- The backend bucket has versioning, server-side encryption, bucket-owner-enforced ownership, public access block, and a non-TLS deny policy; the lock table uses `LockID` with on-demand billing and server-side encryption.
+- The backend bucket has versioning, server-side encryption, bucket-owner-enforced ownership, public access block, a non-TLS deny policy, and lifecycle cost controls that do not expire state history; the lock table uses `LockID` with on-demand billing, server-side encryption, point-in-time recovery, and deletion protection.
 - Bootstrap the backend once from `terraform/bootstrap/backend/` using approved AWS credentials, then run `terraform init -reconfigure` from `terraform/environments/prod/`.
 - If local production state already exists, run `terraform init -migrate-state` only after Auden/operator approval and a local state backup. Otherwise initialize fresh remote state.
 - Provide `db_username` and `db_password` through GitHub Environment `production` secrets (`SHAKA_DB_USERNAME`, `SHAKA_DB_PASSWORD` mapped to `TF_VAR_*`), local ignored `.tfvars`, or another approved secrets manager integration. Never commit secret variable files.
@@ -65,7 +65,7 @@ Terraform state can contain sensitive values, including RDS credentials and prov
 
 ## Safe workflow
 
-From `terraform/environments/prod/`:
+From the repository root:
 
 ```bash
 cd terraform/bootstrap/backend

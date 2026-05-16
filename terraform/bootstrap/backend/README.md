@@ -11,7 +11,8 @@ This root module creates the privileged storage used by `terraform/environments/
 - S3 public access block with all four controls enabled
 - S3 bucket-owner-enforced object ownership
 - S3 bucket policy denying non-TLS access
-- DynamoDB on-demand billing, `LockID` hash key, server-side encryption, and point-in-time recovery
+- S3 lifecycle rule that aborts incomplete multipart uploads after 7 days and transitions noncurrent state object versions to Standard-IA after 90 days without expiring them
+- DynamoDB on-demand billing, `LockID` hash key, server-side encryption, point-in-time recovery, and deletion protection
 
 The S3 bucket and DynamoDB table use Terraform `prevent_destroy` because losing backend state can strand or corrupt production infrastructure management.
 
@@ -28,7 +29,7 @@ terraform plan
 terraform apply
 ```
 
-If the default bucket name is already taken globally, set a unique name in an ignored local tfvars file or `TF_VAR_state_bucket_name`, then update `terraform/environments/prod/providers.tf` to match before initializing production.
+If the default bucket name is already taken globally, set a unique name in an ignored local tfvars file or `TF_VAR_state_bucket_name`, then update `terraform/environments/prod/providers.tf` to match before initializing production. The static guardrail tests intentionally verify that the bootstrap default and production backend block stay in sync, so update both places in the same PR if the bucket name changes.
 
 ## Verification commands
 
