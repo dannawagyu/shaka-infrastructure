@@ -107,18 +107,18 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          comment_arg=()
-          if [ -f "$RUNNER_TEMP/hermes-comment-body.txt" ]; then
-            comment_arg=(--comment-body-file "$RUNNER_TEMP/hermes-comment-body.txt")
-          fi
-          python "$HERMES_WORKSPACE/shared/github/pr-review/scripts/collect-pr-context.py" \
-            --repo "${{ github.repository }}" \
-            --pr "${{ steps.plan.outputs.pr }}" \
-            --event "${{ github.event_name }}" \
-            --mode "${{ steps.plan.outputs.mode }}" \
-            --actor "${{ github.actor }}" \
-            "${comment_arg[@]}" \
+          context_args=(
+            --repo "${{ github.repository }}"
+            --pr "${{ steps.plan.outputs.pr }}"
+            --event "${{ github.event_name }}"
+            --mode "${{ steps.plan.outputs.mode }}"
+            --actor "${{ github.actor }}"
             --output "$RUNNER_TEMP/hermes-pr-context.json"
+          )
+          if [ -f "$RUNNER_TEMP/hermes-comment-body.txt" ]; then
+            context_args+=(--comment-body-file "$RUNNER_TEMP/hermes-comment-body.txt")
+          fi
+          python "$HERMES_WORKSPACE/shared/github/pr-review/scripts/collect-pr-context.py" "${context_args[@]}"
           python -c 'import json, os; p=json.load(open(os.path.join(os.environ["RUNNER_TEMP"], "hermes-pr-context.json"))); print("draft=" + str(p.get("pr", {}).get("draft", False)).lower())' >> "$GITHUB_OUTPUT"
 
       - name: Run Hermes reviewers
