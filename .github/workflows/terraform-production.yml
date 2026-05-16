@@ -1,0 +1,111 @@
+name: Terraform Production
+
+on:
+  workflow_dispatch:
+    inputs:
+      command:
+        description: "Terraform command to run"
+        required: true
+        default: plan
+        type: choice
+        options:
+          - plan
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: shaka-production-terraform
+  cancel-in-progress: false
+
+jobs:
+  terraform-production:
+    name: Terraform production ${{ inputs.command }}
+    runs-on: ubuntu-latest
+    environment: production
+    defaults:
+      run:
+        working-directory: terraform/environments/prod
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION || 'ap-northeast-2' }}
+      TF_IN_AUTOMATION: "true"
+      TF_INPUT: "false"
+      TF_VAR_aws_region: ${{ vars.AWS_REGION || 'ap-northeast-2' }}
+      TF_VAR_vpc_cidr: ${{ vars.SHAKA_VPC_CIDR || '10.42.0.0/16' }}
+      TF_VAR_public_subnet_cidr: ${{ vars.SHAKA_PUBLIC_SUBNET_CIDR || '10.42.0.0/24' }}
+      SHAKA_AVAILABILITY_ZONES_JSON: ${{ vars.SHAKA_AVAILABILITY_ZONES_JSON || '["ap-northeast-2a","ap-northeast-2c"]' }}
+      SHAKA_PRIVATE_SUBNET_CIDRS_JSON: ${{ vars.SHAKA_PRIVATE_SUBNET_CIDRS_JSON || '["10.42.10.0/24","10.42.11.0/24"]' }}
+      TF_VAR_operator_ssh_cidr: ${{ vars.SHAKA_OPERATOR_SSH_CIDR }}
+      TF_VAR_ssh_key_name: ${{ vars.SHAKA_SSH_KEY_NAME }}
+      TF_VAR_app_ami_id: ${{ vars.SHAKA_APP_AMI_ID }}
+      TF_VAR_app_instance_type: ${{ vars.SHAKA_APP_INSTANCE_TYPE || 't3.micro' }}
+      TF_VAR_database_name: ${{ vars.SHAKA_DATABASE_NAME || 'shaka' }}
+      TF_VAR_db_username: ${{ secrets.SHAKA_DB_USERNAME }}
+      TF_VAR_db_password: ${{ secrets.SHAKA_DB_PASSWORD }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Validate plan-only command
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${{ inputs.command }}" != "plan" ]]; then
+            echo "Production apply is disabled until a remote Terraform backend is configured" >&2
+            exit 1
+          fi
+
+      - name: Configure AWS credentials from production environment
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ${{ env.AWS_REGION }}
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.15.2
+
+      - name: Materialize non-secret production variables
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, os, pathlib
+          required = [
+              'TF_VAR_operator_ssh_cidr',
+              'TF_VAR_ssh_key_name',
+              'TF_VAR_app_ami_id',
+              'TF_VAR_db_username',
+              'TF_VAR_db_password',
+          ]
+          missing = [name for name in required if not os.environ.get(name)]
+          if missing:
+              raise SystemExit('Missing required production environment values: ' + ', '.join(missing))
+          availability_zones = os.environ.get('SHAKA_AVAILABILITY_ZONES_JSON')
+          private_subnet_cidrs = os.environ.get('SHAKA_PRIVATE_SUBNET_CIDRS_JSON')
+          if not availability_zones:
+              raise SystemExit('Missing required production environment variable: SHAKA_AVAILABILITY_ZONES_JSON')
+          if not private_subnet_cidrs:
+              raise SystemExit('Missing required production environment variable: SHAKA_PRIVATE_SUBNET_CIDRS_JSON')
+          data = {
+              'availability_zones': json.loads(availability_zones),
+              'private_subnet_cidrs': json.loads(private_subnet_cidrs),
+          }
+          pathlib.Path('production.auto.tfvars.json').write_text(json.dumps(data, indent=2), encoding='utf-8')
+          PY
+
+      - name: Terraform fmt check
+        run: terraform fmt -check -recursive
+
+      - name: Terraform init
+        run: terraform init
+
+      - name: Terraform validate
+        run: terraform validate
+
+      - name: Terraform plan
+        run: terraform plan -out=production.tfplan

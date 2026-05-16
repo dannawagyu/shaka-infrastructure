@@ -1,0 +1,27 @@
+# Example only. Copy to production.local.tfvars and fill real values locally.
+# production.local.tfvars is ignored by git. Do not commit real secrets.
+
+aws_region  = "ap-northeast-2"
+environment = "prod"
+
+# Terraform-managed VPC/network defaults. Change only if they overlap an existing network.
+vpc_cidr             = "10.42.0.0/16"
+availability_zones   = ["ap-northeast-2a", "ap-northeast-2c"]
+public_subnet_cidr   = "10.42.0.0/24"
+private_subnet_cidrs = ["10.42.10.0/24", "10.42.11.0/24"]
+
+# Access and compute.
+operator_ssh_cidr = "203.0.113.10/32"
+ssh_key_name      = "shaka-production"
+app_ami_id        = "ami-xxxxxxxxxxxxxxxxx"
+app_instance_type = "t3.micro"
+
+# RDS bootstrap credentials. Keep these in local ignored files or GitHub production secrets.
+database_name = "shaka"
+db_username   = "shaka_app_admin"
+db_password   = "CHANGE_ME_IN_SECRET_STORE"
+
+# Optional discovery-only references for the currently running pre-cutover resources.
+# existing_app_instance_id  = "i-xxxxxxxxxxxxxxxxx"
+# existing_vpc_id           = "vpc-xxxxxxxxxxxxxxxxx"
+# existing_public_subnet_id = "subnet-xxxxxxxxxxxxxxxxx"

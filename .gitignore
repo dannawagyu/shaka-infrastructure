@@ -22,3 +22,7 @@ override.tf.json
 # Python cache
 __pycache__/
 *.py[cod]
+
+# Local production values for operator-filled Terraform plans
+production.local.tfvars
+terraform/environments/prod/production.local.tfvars
