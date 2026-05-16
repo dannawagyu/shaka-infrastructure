@@ -5,7 +5,8 @@ Terraform baseline for Shaka production AWS infrastructure.
 ## Layout
 
 - `terraform/environments/prod/` - production environment Terraform root module.
-- `scripts/validate-prod-terraform.sh` - local validation entrypoint.
+- `scripts/validate-prod-terraform.sh` - production Terraform root validation entrypoint.
+- `scripts/validate-terraform-ci.sh` - pull request CI validation entrypoint for static tests and Terraform roots.
 - `tests/terraform_static_checks.py` - static guardrail checks for issue #1 acceptance criteria.
 
 ## Production baseline
@@ -48,6 +49,17 @@ The VPC/subnet CIDR defaults can remain unless they overlap another network:
 - `private_subnet_cidrs = ["10.42.10.0/24", "10.42.11.0/24"]`
 
 The prior EC2/VPC can still be referenced through optional `existing_app_instance_id`, `existing_vpc_id`, and `existing_public_subnet_id` variables for inventory and no-op review before the cutover. If a future PR brings additional existing resources under Terraform management, use `terraform import` into explicit resources or modules before replacing these reference variables.
+
+## Pull request CI and branch policy
+
+Pull requests targeting `main` run `.github/workflows/terraform-ci.yml` automatically for Terraform and repository guardrails. The PR workflow is intentionally separate from the manual production workflow:
+
+- Runs `python3 -m unittest discover -s tests -v` so static policy tests cover GitHub Actions, Terraform guardrails, and documentation expectations.
+- Runs `terraform fmt -check -recursive` from the repository root.
+- Runs `terraform init -backend=false -input=false` and `terraform validate` for each committed Terraform root that can be validated without production secrets: `terraform/environments/prod` and `terraform/observability/grafana`.
+- Uses only `contents: read` GitHub permissions, pinned third-party actions, and no `secrets.*`, production environment, `terraform plan`, or `terraform apply` steps on PRs. Fork PRs must continue to run without repository or environment secrets; any future cloud credential setup belongs in the manual production workflow, not PR CI.
+
+Required branch policy for `main`: require pull requests, require the `Terraform validation` status check from the `Terraform CI` workflow, require conversation resolution, and block force pushes/deletions. The manual `.github/workflows/terraform-production.yml` workflow remains environment-gated and plan-only until remote backend/state handling is explicitly approved.
 
 ## State and secrets handling
 
