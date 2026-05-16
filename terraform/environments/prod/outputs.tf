@@ -1,31 +1,31 @@
 output "vpc_id" {
-  description = "Terraform-managed Shaka production VPC ID."
-  value       = aws_vpc.shaka.id
+  description = "Existing Shaka production VPC ID that hosts the app EC2 instance."
+  value       = data.aws_subnet.existing_public.vpc_id
 }
 
 output "public_subnet_id" {
-  description = "Terraform-managed public app subnet ID."
-  value       = aws_subnet.app_public.id
+  description = "Existing public subnet ID for the Shaka production EC2 app host."
+  value       = data.aws_instance.existing_app.subnet_id
 }
 
 output "private_subnet_ids" {
-  description = "Terraform-managed private RDS subnet IDs."
+  description = "Terraform-managed private RDS subnet IDs in the existing app VPC."
   value       = aws_subnet.rds_private[*].id
 }
 
 output "app_instance_id" {
-  description = "Terraform-managed Shaka production EC2 instance ID."
-  value       = aws_instance.app.id
+  description = "Existing Shaka production EC2 app host instance ID."
+  value       = data.aws_instance.existing_app.id
 }
 
 output "app_public_ip" {
-  description = "Public IPv4 address for the Shaka production EC2 app host."
-  value       = aws_instance.app.public_ip
+  description = "Public IPv4 address for the existing Shaka production EC2 app host."
+  value       = data.aws_instance.existing_app.public_ip
 }
 
 output "app_security_group_id" {
-  description = "Terraform-managed Shaka app security group ID."
-  value       = aws_security_group.app.id
+  description = "Existing Shaka app security group ID allowed to reach RDS."
+  value       = var.existing_app_security_group_id
 }
 
 output "rds_endpoint" {
