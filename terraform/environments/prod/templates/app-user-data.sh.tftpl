@@ -123,11 +123,6 @@ prometheus.relabel "shaka_server_resource_labels" {
   forward_to = [prometheus.remote_write.grafana_cloud.receiver]
 
   rule {
-    target_label = "job"
-    replacement  = "shaka-server"
-  }
-
-  rule {
     target_label = "service_name"
     replacement  = "shaka-server"
   }
