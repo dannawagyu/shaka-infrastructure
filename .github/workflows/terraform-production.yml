@@ -52,7 +52,7 @@ jobs:
         run: |
           set -euo pipefail
           if [[ "${{ inputs.command }}" != "plan" ]]; then
-            echo "Production apply is disabled until a remote Terraform backend is configured" >&2
+            echo "Production apply remains disabled until Auden approves the cutover workflow" >&2
             exit 1
           fi
 
