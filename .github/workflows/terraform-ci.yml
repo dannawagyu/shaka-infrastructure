@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - ".github/workflows/terraform-ci.yml"
+      - ".github/workflows/hermes-pr-review.yml"
       - "scripts/**"
       - "tests/**"
       - "terraform/**"
@@ -16,6 +17,7 @@ on:
       - main
     paths:
       - ".github/workflows/terraform-ci.yml"
+      - ".github/workflows/hermes-pr-review.yml"
       - "scripts/**"
       - "tests/**"
       - "terraform/**"
