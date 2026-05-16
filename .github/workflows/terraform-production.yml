@@ -10,10 +10,11 @@ on:
         type: choice
         options:
           - plan
+          - apply
           - bootstrap-backend-plan
           - bootstrap-backend-apply
       apply_confirmation:
-        description: "Required only for bootstrap-backend-apply: bootstrap-production-backend"
+        description: "Required for apply/app bootstrap commands: apply-production or bootstrap-production-backend"
         required: false
         type: string
 
@@ -57,6 +58,12 @@ jobs:
           case "${{ inputs.command }}" in
             plan|bootstrap-backend-plan)
               ;;
+            apply)
+              if [[ "${{ inputs.apply_confirmation }}" != "apply-production" ]]; then
+                echo "apply requires apply_confirmation=apply-production" >&2
+                exit 1
+              fi
+              ;;
             bootstrap-backend-apply)
               if [[ "${{ inputs.apply_confirmation }}" != "bootstrap-production-backend" ]]; then
                 echo "bootstrap-backend-apply requires apply_confirmation=bootstrap-production-backend" >&2
@@ -68,7 +75,6 @@ jobs:
               exit 1
               ;;
           esac
-          echo "Production app apply remains disabled until Auden approves the cutover workflow" >&2
 
       - name: Configure AWS credentials from production environment
         uses: aws-actions/configure-aws-credentials@v4
@@ -85,7 +91,7 @@ jobs:
           terraform_wrapper: false
 
       - name: Materialize non-secret production variables
-        if: ${{ inputs.command == 'plan' }}
+        if: ${{ inputs.command == 'plan' || inputs.command == 'apply' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -116,20 +122,28 @@ jobs:
           PY
 
       - name: Terraform prod fmt check
-        if: ${{ inputs.command == 'plan' }}
+        if: ${{ inputs.command == 'plan' || inputs.command == 'apply' }}
         run: terraform -chdir=terraform/environments/prod fmt -check -recursive
 
       - name: Terraform prod init
-        if: ${{ inputs.command == 'plan' }}
+        if: ${{ inputs.command == 'plan' || inputs.command == 'apply' }}
         run: terraform -chdir=terraform/environments/prod init
 
       - name: Terraform prod validate
-        if: ${{ inputs.command == 'plan' }}
+        if: ${{ inputs.command == 'plan' || inputs.command == 'apply' }}
         run: terraform -chdir=terraform/environments/prod validate
 
       - name: Terraform prod plan
-        if: ${{ inputs.command == 'plan' }}
+        if: ${{ inputs.command == 'plan' || inputs.command == 'apply' }}
         run: terraform -chdir=terraform/environments/prod plan -out=production.tfplan
+
+      - name: Terraform prod apply
+        if: ${{ inputs.command == 'apply' }}
+        run: terraform -chdir=terraform/environments/prod apply -input=false production.tfplan
+
+      - name: Terraform prod outputs
+        if: ${{ inputs.command == 'apply' }}
+        run: terraform -chdir=terraform/environments/prod output
 
       - name: Terraform backend fmt check
         if: ${{ startsWith(inputs.command, 'bootstrap-backend-') }}

@@ -45,13 +45,14 @@ RDS is private and accepts MySQL only from the Terraform-managed EC2 app securit
 
 ## Backend bootstrap and apply gates
 
-The workflow supports three manual commands:
+The workflow supports four manual commands:
 
 - `plan`: production root plan only. This initializes `terraform/environments/prod` against the remote backend and runs `terraform plan`; it does not apply app/EC2/RDS infrastructure.
+- `apply`: production root plan + apply. This requires `apply_confirmation=apply-production`, uses the `production` GitHub Environment plus `AWS_ROLE_TO_ASSUME`, and applies only the exact `production.tfplan` generated earlier in the same run.
 - `bootstrap-backend-plan`: plans only the one-time backend bootstrap root at `terraform/bootstrap/backend`.
 - `bootstrap-backend-apply`: applies only the backend bootstrap root. This requires `apply_confirmation=bootstrap-production-backend` and uses the `production` GitHub Environment plus `AWS_ROLE_TO_ASSUME`.
 
-Production app/EC2/RDS `terraform apply` remains disabled until Auden separately approves enabling the cutover workflow. Before enabling app apply, the existing server should be intentionally drained/stopped and the resulting plan should be reviewed for the expected EC2 + RDS creation path. Do not use this workflow to destroy production RDS; the database has `deletion_protection` and Terraform `prevent_destroy` enabled.
+Production app/EC2/RDS `terraform apply` is intentionally manual-only and protected by the GitHub `production` environment plus the `apply-production` confirmation string. Review the preceding `plan` output before dispatching `apply`; the expected initial cutover path is EC2 + RDS + VPC resource creation with no destroys. Do not use this workflow to destroy production RDS; the database has `deletion_protection` and Terraform `prevent_destroy` enabled.
 
 The production root now expects the S3 backend created by `terraform/bootstrap/backend`: bucket `dannawagyu-shaka-prod-terraform-state`, key `prod/terraform.tfstate`, region `ap-northeast-2`, and DynamoDB lock table `shaka-prod-terraform-locks`. After bootstrap succeeds, initialize production with:
 

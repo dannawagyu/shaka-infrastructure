@@ -20,7 +20,10 @@ class GitHubActionsProductionTest(unittest.TestCase):
         self.assertNotIn("SHAKA_VPC_ID", text)
         self.assertNotIn("SHAKA_PUBLIC_SUBNET_ID", text)
         self.assertIn("terraform -chdir=terraform/environments/prod plan -out=production.tfplan", text)
-        self.assertIn("Production app apply remains disabled until Auden approves the cutover workflow", text)
+        self.assertIn("apply", text)
+        self.assertIn("apply_confirmation=apply-production", text)
+        self.assertIn("terraform -chdir=terraform/environments/prod apply -input=false production.tfplan", text)
+        self.assertIn("terraform -chdir=terraform/environments/prod output", text)
         self.assertIn("bootstrap-backend-plan", text)
         self.assertIn("bootstrap-backend-apply", text)
         self.assertIn("apply_confirmation=bootstrap-production-backend", text)
@@ -28,7 +31,6 @@ class GitHubActionsProductionTest(unittest.TestCase):
         self.assertIn("aws s3api get-bucket-versioning", text)
         self.assertIn("aws dynamodb describe-table", text)
         self.assertNotIn("terraform apply -auto-approve production.tfplan", text)
-        self.assertNotIn("apply-production", text)
         self.assertNotIn("\nenvironment: production\n", text.split("jobs:", 1)[0])
 
     def test_grafana_runtime_credentials_are_not_rendered_into_terraform_user_data(self):
