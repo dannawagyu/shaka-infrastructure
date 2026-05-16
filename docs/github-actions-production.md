@@ -45,13 +45,9 @@ RDS is private and accepts MySQL only from the Terraform-managed EC2 app securit
 
 ## Apply gate
 
-The workflow always runs `terraform plan`. `terraform apply` runs only when:
+The workflow is intentionally plan-only for this PR. It runs `terraform plan` so production variables, credentials, and resource changes can be validated without creating state on an ephemeral GitHub Actions runner.
 
-1. `command` is `apply`, and
-2. `apply_confirmation` is exactly `apply-production`, and
-3. the GitHub `production` environment protection rules allow the job to start.
-
-Before the first production apply, the existing server should be intentionally drained/stopped and the resulting plan should be reviewed for the expected EC2 + RDS creation path. Do not use this workflow to destroy production RDS; the database has `deletion_protection` and Terraform `prevent_destroy` enabled.
+`terraform apply` is disabled until a production remote backend with encryption, locking, access controls, and an approved state migration path is configured. Before enabling apply, the existing server should be intentionally drained/stopped and the resulting plan should be reviewed for the expected EC2 + RDS creation path. Do not use this workflow to destroy production RDS; the database has `deletion_protection` and Terraform `prevent_destroy` enabled.
 
 ## Grafana credential handling
 

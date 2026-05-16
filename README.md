@@ -71,7 +71,7 @@ terraform plan \
   -var-file=production.local.tfvars
 ```
 
-Do not run `terraform apply` until a production remote backend and secret handling workflow are approved. In GitHub Actions, use the `production` environment workflow in `.github/workflows/terraform-production.yml`; it requires `apply_confirmation=apply-production` for applies.
+Do not run `terraform apply` until a production remote backend and secret handling workflow are approved. In GitHub Actions, the `production` environment workflow in `.github/workflows/terraform-production.yml` is intentionally plan-only until that backend exists.
 
 ## Guarded deletion behavior
 

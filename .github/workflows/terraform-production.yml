@@ -10,12 +10,6 @@ on:
         type: choice
         options:
           - plan
-          - apply
-      apply_confirmation:
-        description: "Required for apply: apply-production"
-        required: false
-        default: ""
-        type: string
 
 permissions:
   contents: read
@@ -53,12 +47,12 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Validate command confirmation
+      - name: Validate plan-only command
         shell: bash
         run: |
           set -euo pipefail
-          if [[ "${{ inputs.command }}" == "apply" && "${{ inputs.apply_confirmation }}" != "apply-production" ]]; then
-            echo "Refusing production apply without apply_confirmation=apply-production" >&2
+          if [[ "${{ inputs.command }}" != "plan" ]]; then
+            echo "Production apply is disabled until a remote Terraform backend is configured" >&2
             exit 1
           fi
 
@@ -115,7 +109,3 @@ jobs:
 
       - name: Terraform plan
         run: terraform plan -out=production.tfplan
-
-      - name: Terraform apply
-        if: inputs.command == 'apply'
-        run: terraform apply -auto-approve production.tfplan

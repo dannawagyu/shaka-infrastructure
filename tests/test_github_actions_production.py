@@ -20,8 +20,9 @@ class GitHubActionsProductionTest(unittest.TestCase):
         self.assertNotIn("SHAKA_VPC_ID", text)
         self.assertNotIn("SHAKA_PUBLIC_SUBNET_ID", text)
         self.assertIn("terraform plan -out=production.tfplan", text)
-        self.assertIn("terraform apply -auto-approve production.tfplan", text)
-        self.assertIn("apply-production", text)
+        self.assertIn("Production apply is disabled until a remote Terraform backend is configured", text)
+        self.assertNotIn("terraform apply -auto-approve production.tfplan", text)
+        self.assertNotIn("apply-production", text)
         self.assertNotIn("\nenvironment: production\n", text.split("jobs:", 1)[0])
 
     def test_grafana_runtime_credentials_are_not_rendered_into_terraform_user_data(self):
@@ -31,6 +32,18 @@ class GitHubActionsProductionTest(unittest.TestCase):
         self.assertIn('sys.env("GRAFANA_PROMETHEUS_REMOTE_WRITE_TOKEN")', text)
         self.assertNotIn('${grafana_prometheus_remote_write_token}', text)
         self.assertNotIn('${grafana_prometheus_remote_write_url}', text)
+
+    def test_user_data_installs_and_starts_alloy_safely(self):
+        text = USER_DATA.read_text()
+        self.assertIn("apt.grafana.com", text)
+        self.assertIn("apt-get install -y alloy", text)
+        self.assertIn("http://169.254.169.254/latest/api/token", text)
+        self.assertIn("http://169.254.169.254/latest/meta-data/instance-id", text)
+        self.assertIn("Environment=EC2_INSTANCE_ID=$${INSTANCE_ID}", text)
+        self.assertIn("systemctl enable --now nginx", text)
+        self.assertIn("systemctl enable --now alloy", text)
+        self.assertIn("systemctl enable shaka-server", text)
+        self.assertNotIn("systemctl enable --now shaka-server", text)
 
 
 if __name__ == "__main__":

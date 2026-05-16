@@ -5,6 +5,13 @@ export DEBIAN_FRONTEND=noninteractive
 apt-get update
 apt-get install -y ca-certificates curl gnupg nginx openjdk-21-jre-headless
 
+install -d -m 0755 /etc/apt/keyrings
+curl -fsSL https://apt.grafana.com/gpg.key | gpg --dearmor >/etc/apt/keyrings/grafana.gpg
+chmod 0644 /etc/apt/keyrings/grafana.gpg
+echo "deb [signed-by=/etc/apt/keyrings/grafana.gpg] https://apt.grafana.com stable main" >/etc/apt/sources.list.d/grafana.list
+apt-get update
+apt-get install -y alloy
+
 install -d -m 0755 /opt/shaka/releases /etc/shaka /etc/alloy /etc/systemd/system/alloy.service.d
 
 cat >/etc/systemd/system/shaka-server.service <<'UNIT'
@@ -26,9 +33,21 @@ SuccessExitStatus=143
 WantedBy=multi-user.target
 UNIT
 
-cat >/etc/systemd/system/alloy.service.d/limits.conf <<'UNIT'
+IMDS_TOKEN_FILE=/tmp/shaka-imds-token
+INSTANCE_ID_FILE=/tmp/shaka-instance-id
+if curl -fsS -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600" -o "$IMDS_TOKEN_FILE"; then
+  read -r IMDS_TOKEN <"$IMDS_TOKEN_FILE"
+  if curl -fsS -H "X-aws-ec2-metadata-token: $IMDS_TOKEN" http://169.254.169.254/latest/meta-data/instance-id -o "$INSTANCE_ID_FILE"; then
+    read -r INSTANCE_ID <"$INSTANCE_ID_FILE"
+  fi
+fi
+rm -f "$IMDS_TOKEN_FILE" "$INSTANCE_ID_FILE"
+INSTANCE_ID="$${INSTANCE_ID:-unknown}"
+
+cat >/etc/systemd/system/alloy.service.d/limits.conf <<UNIT
 [Service]
 Environment=GOMEMLIMIT=96MiB
+Environment=EC2_INSTANCE_ID=$${INSTANCE_ID}
 EnvironmentFile=-/etc/alloy/grafana-cloud.env
 MemoryMax=128M
 UNIT
@@ -125,4 +144,5 @@ ALLOY
 
 systemctl daemon-reload
 systemctl enable shaka-server || true
-systemctl enable alloy || true
+systemctl enable --now nginx || true
+systemctl enable --now alloy || true
