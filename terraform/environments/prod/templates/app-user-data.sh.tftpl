@@ -12,7 +12,7 @@ echo "deb [signed-by=/etc/apt/keyrings/grafana.gpg] https://apt.grafana.com stab
 apt-get update
 apt-get install -y alloy
 
-install -d -m 0755 /opt/shaka/releases /etc/shaka /etc/alloy /etc/systemd/system/alloy.service.d
+install -d -m 0755 /opt/shaka/releases /etc/shaka /etc/alloy /etc/systemd/system/alloy.service.d /usr/local/sbin
 
 cat >/etc/systemd/system/shaka-server.service <<'UNIT'
 [Unit]
@@ -49,15 +49,60 @@ cat >/etc/systemd/system/alloy.service.d/limits.conf <<UNIT
 Environment=GOMEMLIMIT=96MiB
 Environment=EC2_INSTANCE_ID=$${INSTANCE_ID}
 EnvironmentFile=-/etc/alloy/grafana-cloud.env
+ExecStartPre=/usr/local/sbin/validate-alloy-grafana-cloud-env
 MemoryMax=128M
 UNIT
 
+cat >/usr/local/sbin/validate-alloy-grafana-cloud-env <<'VALIDATE'
+#!/usr/bin/env bash
+set -euo pipefail
+
+ENV_FILE=/etc/alloy/grafana-cloud.env
+
+if [[ ! -f "$ENV_FILE" ]]; then
+  echo "Missing $ENV_FILE. Populate Grafana Cloud remote_write credentials from the deployment/operator secret path before starting Alloy." >&2
+  exit 1
+fi
+
+owner_group="$(stat -c '%U:%G' "$ENV_FILE")"
+if [[ "$owner_group" != "root:root" ]]; then
+  echo "$ENV_FILE must be owned by root:root" >&2
+  exit 1
+fi
+
+mode="$(stat -c '%a' "$ENV_FILE")"
+permissions=$((8#$mode))
+if (( (permissions & 8#077) != 0 || (permissions & 8#700) == 0 )); then
+  echo "$ENV_FILE permissions must be 0600 or stricter with no group/other access" >&2
+  exit 1
+fi
+
+set -a
+# shellcheck disable=SC1090
+source "$ENV_FILE"
+set +a
+
+for var in GRAFANA_PROMETHEUS_REMOTE_WRITE_URL GRAFANA_PROMETHEUS_REMOTE_WRITE_USER GRAFANA_PROMETHEUS_REMOTE_WRITE_TOKEN; do
+  if [[ -z "$${!var:-}" ]]; then
+    echo "$ENV_FILE is missing required variable $var" >&2
+    exit 1
+  fi
+done
+
+if [[ "$${GRAFANA_PROMETHEUS_REMOTE_WRITE_TOKEN}" == "***" ]]; then
+  echo "$ENV_FILE contains the example token placeholder" >&2
+  exit 1
+fi
+VALIDATE
+chmod 0700 /usr/local/sbin/validate-alloy-grafana-cloud-env
+
 cat >/etc/alloy/grafana-cloud.env.example <<'ENV'
-# Copy to /etc/alloy/grafana-cloud.env with mode 600 from the production
-# deployment pipeline. Do not commit real values.
+# Copy to /etc/alloy/grafana-cloud.env as root:root with mode 0600 from the
+# production deployment/operator secret path, then restart alloy. Do not put
+# real values in Terraform variables, user_data, git, logs, or screenshots.
 GRAFANA_PROMETHEUS_REMOTE_WRITE_URL=https://prometheus-prod-xx.grafana.net/api/prom/push
 GRAFANA_PROMETHEUS_REMOTE_WRITE_USER=000000
-GRAFANA_PROMETHEUS_REMOTE_WRITE_TOKEN=glc_xxx
+GRAFANA_PROMETHEUS_REMOTE_WRITE_TOKEN=***
 ENV
 chmod 0644 /etc/alloy/grafana-cloud.env.example
 
@@ -65,6 +110,7 @@ cat >/etc/alloy/config.alloy <<'ALLOY'
 prometheus.scrape "shaka_server" {
   targets = [{
     __address__ = "127.0.0.1:8080",
+    job         = "shaka-server",
     service     = "shaka-server",
     env         = "${environment}",
   }]
@@ -113,6 +159,11 @@ prometheus.scrape "shaka_host" {
 
 prometheus.relabel "shaka_host_resource_labels" {
   forward_to = [prometheus.remote_write.grafana_cloud.receiver]
+
+  rule {
+    target_label = "job"
+    replacement  = "shaka-host"
+  }
 
   rule {
     target_label = "service_name"

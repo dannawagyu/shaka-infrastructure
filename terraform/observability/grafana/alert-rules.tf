@@ -59,7 +59,7 @@ resource "grafana_rule_group" "shaka_rfc_0010" {
       }
       core_systemd_service_down = {
         title     = "Shaka core systemd service down"
-        condition = "node_systemd_unit_state{name=~\"(shaka-server|mysql|nginx)\\\\.service\",state=\"active\"} == 0"
+        condition = "node_systemd_unit_state{name=~\"(shaka-server|nginx)\\.service\",state=\"active\"} == 0"
         summary   = "One or more core services are inactive or failed."
       }
       alloy_down = {

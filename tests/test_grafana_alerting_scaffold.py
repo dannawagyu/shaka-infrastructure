@@ -8,6 +8,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 GRAFANA_DIR = ROOT / "terraform" / "observability" / "grafana"
+PROD_USER_DATA = ROOT / "terraform" / "environments" / "prod" / "templates" / "app-user-data.sh.tftpl"
 DOC = ROOT / "docs" / "observability" / "grafana-alerting.md"
 
 EXPECTED_ALERT_UIDS = {
@@ -54,6 +55,11 @@ class GrafanaAlertingScaffoldTest(unittest.TestCase):
         self.assertIn('query     = { params = ["B"] }', tf)
         for query_part in ["sum by (instance, job) (rate(http_server_requests_seconds_count", "sum by (instance, job) (jvm_memory_used_bytes", "avg by (instance, job) (rate(node_cpu_seconds_total"]:
             self.assertIn(query_part, tf)
+        self.assertIn('up{job=\\"shaka-server\\"}', tf)
+        self.assertIn('up{job=\\"shaka-host\\"}', tf)
+        self.assertIn('(shaka-server|nginx)\\\\.service', tf)
+        self.assertNotIn('(shaka-server|nginx)\\\\\\\\.service', tf)
+        self.assertNotIn('(shaka-server|mysql|nginx)', tf)
         self.assertNotIn('query     = { params = ["C"] }', tf)
         self.assertNotIn("intervalMs    = 1000", tf)
         self.assertNotIn('runbook_url = "https://github.com/dannawagyu/shaka-infrastructure/blob/main/docs/observability/grafana-alerting.md"', tf)
@@ -78,6 +84,26 @@ class GrafanaAlertingScaffoldTest(unittest.TestCase):
         ]
         for phrase in required_phrases:
             self.assertIn(phrase, text, f"docs missing phrase: {phrase}")
+
+    def test_ec2_alloy_labels_and_runtime_secret_validation_match_alerts(self) -> None:
+        self.assertTrue(PROD_USER_DATA.is_file(), f"missing EC2 user_data template: {PROD_USER_DATA}")
+        user_data = PROD_USER_DATA.read_text()
+        for phrase in [
+            'target_label = "job"',
+            'replacement  = "shaka-server"',
+            'replacement  = "shaka-host"',
+            'target_label = "service_name"',
+            'target_label = "deployment_environment"',
+            'unit_include = "^(shaka-server|nginx|alloy)\\\\.service$"',
+            'ExecStartPre=/usr/local/sbin/validate-alloy-grafana-cloud-env',
+            'owner_group="$(stat -c',
+            '(permissions & 8#077) != 0',
+            'GRAFANA_PROMETHEUS_REMOTE_WRITE_URL',
+            'GRAFANA_PROMETHEUS_REMOTE_WRITE_USER',
+            'GRAFANA_PROMETHEUS_REMOTE_WRITE_TOKEN',
+        ]:
+            self.assertIn(phrase, user_data, f"user_data missing phrase: {phrase}")
+        self.assertNotIn("glc_", user_data)
 
 
 if __name__ == "__main__":
