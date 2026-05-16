@@ -139,6 +139,8 @@ prometheus.relabel "shaka_server_resource_labels" {
 }
 
 prometheus.exporter.unix "shaka_host" {
+  # Keep default unix collectors enabled and add systemd service state metrics.
+  # This Alloy version uses enable_collectors instead of unsupported enabled_collectors.
   enable_collectors = ["systemd"]
 
   filesystem {

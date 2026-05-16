@@ -105,7 +105,7 @@ class GrafanaAlertingScaffoldTest(unittest.TestCase):
         ]:
             self.assertIn(phrase, user_data, f"user_data missing phrase: {phrase}")
         self.assertNotIn("glc_", user_data)
-        self.assertNotIn("enabled_collectors", user_data)
+        self.assertNotRegex(user_data, r"(?m)^\\s*enabled_collectors\\s*=")
 
 
 if __name__ == "__main__":
