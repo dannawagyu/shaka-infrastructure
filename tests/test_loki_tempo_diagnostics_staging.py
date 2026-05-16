@@ -63,11 +63,11 @@ class LokiTempoDiagnosticsStagingTest(unittest.TestCase):
         ]:
             self.assertIn(f'variable "{name}"', text)
         for name in ["tempo_endpoint", "tempo_user", "tempo_token"]:
-            self.assertRegex(text, rf'variable\s+"{name}"[\s\S]*?sensitive\s+=\s+true')
-        self.assertRegex(text, r'variable\s+"enable_loki_ingestion"[\s\S]*?default\s+=\s+false')
-        self.assertRegex(text, r'variable\s+"enable_tempo_tracing"[\s\S]*?default\s+=\s+false')
-        self.assertRegex(text, r'variable\s+"tempo_sampling_rate"[\s\S]*?default\s+=\s+0\.01')
-        self.assertRegex(text, r'variable\s+"tempo_sampling_rate"[\s\S]*?condition\s+=\s+var\.tempo_sampling_rate\s+>=\s+0[\s\S]*?var\.tempo_sampling_rate\s+<=\s+0\.05')
+            self.assertRegex(text, rf'variable\s+"{name}"(?:(?!variable)[\s\S])*?sensitive\s+=\s+true')
+        self.assertRegex(text, r'variable\s+"enable_loki_ingestion"(?:(?!variable)[\s\S])*?default\s+=\s+false')
+        self.assertRegex(text, r'variable\s+"enable_tempo_tracing"(?:(?!variable)[\s\S])*?default\s+=\s+false')
+        self.assertRegex(text, r'variable\s+"tempo_sampling_rate"(?:(?!variable)[\s\S])*?default\s+=\s+0\.01')
+        self.assertRegex(text, r'variable\s+"tempo_sampling_rate"(?:(?!variable)[\s\S])*?condition\s+=\s+var\.tempo_sampling_rate\s+>=\s+0(?:(?!variable)[\s\S])*?var\.tempo_sampling_rate\s+<=\s+0\.05')
         self.assertRegex(text, r'traces_backend\s+=\s+var\.enable_tempo_tracing \? "grafana-cloud-tempo" : "staged"')
 
 

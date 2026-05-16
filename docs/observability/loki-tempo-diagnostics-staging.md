@@ -59,7 +59,7 @@ Recommendation: run a controlled spike before choosing a production tracing back
 
 ### Disabled-by-default Terraform placeholders
 
-`terraform/observability/grafana/stack-variables.tf` declares Tempo endpoint/user/token placeholders, keeps `enable_tempo_tracing = false`, and records a conservative `tempo_sampling_rate` default of 1%. The validation cap is 5% for the staged design so an accidental high-volume trace rollout is rejected before review.
+`terraform/observability/grafana/stack-variables.tf` declares Tempo endpoint/user/token placeholders, keeps `enable_tempo_tracing = false`, and records a conservative `tempo_sampling_rate` default of 1%. The validation cap is 5% for the staged design so an accidental high-volume trace rollout is rejected before review. These Tempo variables must remain unreferenced by Terraform resources, EC2 user data, or rendered templates until a separately approved enablement PR, because sensitive Terraform values can still enter state once they are consumed.
 
 ### Spike measurement checklist
 
