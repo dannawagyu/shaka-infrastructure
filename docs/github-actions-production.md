@@ -43,10 +43,12 @@ RDS is private and accepts MySQL only from the existing EC2 app security group. 
 
 ## Backend bootstrap and apply gates
 
-The workflow supports four manual commands:
+The workflow supports six manual commands:
 
 - `plan`: production root plan only. This initializes `terraform/environments/prod` against the remote backend and runs `terraform plan`; it does not apply app/RDS infrastructure.
 - `apply`: production root plan + apply. This requires `apply_confirmation=apply-production`, uses the `production` GitHub Environment plus `AWS_ROLE_TO_ASSUME`, and applies only the exact `production.tfplan` generated earlier in the same run.
+- `cleanup-accidental-stack-plan`: previews the guarded cleanup of the accidental Terraform-created replacement app stack from state/AWS. This is for rollback from the mistaken EC2/VPC path only.
+- `cleanup-accidental-stack-apply`: deletes the accidental replacement EC2/VPC/subnets/security groups and, if the mistakenly-created RDS is still in that accidental VPC, deletes it with a final snapshot before removing stale Terraform state. This requires `apply_confirmation=cleanup-accidental-stack` and refuses to touch the configured existing app instance/security group/VPC.
 - `bootstrap-backend-plan`: plans only the one-time backend bootstrap root at `terraform/bootstrap/backend`.
 - `bootstrap-backend-apply`: applies only the backend bootstrap root. This requires `apply_confirmation=bootstrap-production-backend` and uses the `production` GitHub Environment plus `AWS_ROLE_TO_ASSUME`.
 

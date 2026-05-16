@@ -11,10 +11,12 @@ on:
         options:
           - plan
           - apply
+          - cleanup-accidental-stack-plan
+          - cleanup-accidental-stack-apply
           - bootstrap-backend-plan
           - bootstrap-backend-apply
       apply_confirmation:
-        description: "Required for apply/app bootstrap commands: apply-production or bootstrap-production-backend"
+        description: "Required for apply commands: apply-production, cleanup-accidental-stack, or bootstrap-production-backend"
         required: false
         type: string
 
@@ -52,11 +54,17 @@ jobs:
         run: |
           set -euo pipefail
           case "${{ inputs.command }}" in
-            plan|bootstrap-backend-plan)
+            plan|bootstrap-backend-plan|cleanup-accidental-stack-plan)
               ;;
             apply)
               if [[ "${{ inputs.apply_confirmation }}" != "apply-production" ]]; then
                 echo "apply requires apply_confirmation=apply-production" >&2
+                exit 1
+              fi
+              ;;
+            cleanup-accidental-stack-apply)
+              if [[ "${{ inputs.apply_confirmation }}" != "cleanup-accidental-stack" ]]; then
+                echo "cleanup-accidental-stack-apply requires apply_confirmation=cleanup-accidental-stack" >&2
                 exit 1
               fi
               ;;
@@ -87,7 +95,7 @@ jobs:
           terraform_wrapper: false
 
       - name: Materialize non-secret production variables
-        if: ${{ inputs.command == 'plan' || inputs.command == 'apply' }}
+        if: ${{ inputs.command == 'plan' || inputs.command == 'apply' || startsWith(inputs.command, 'cleanup-accidental-stack-') }}
         shell: bash
         run: |
           set -euo pipefail
@@ -117,20 +125,28 @@ jobs:
           PY
 
       - name: Terraform prod fmt check
-        if: ${{ inputs.command == 'plan' || inputs.command == 'apply' }}
+        if: ${{ inputs.command == 'plan' || inputs.command == 'apply' || startsWith(inputs.command, 'cleanup-accidental-stack-') }}
         run: terraform -chdir=terraform/environments/prod fmt -check -recursive
 
       - name: Terraform prod init
-        if: ${{ inputs.command == 'plan' || inputs.command == 'apply' }}
+        if: ${{ inputs.command == 'plan' || inputs.command == 'apply' || startsWith(inputs.command, 'cleanup-accidental-stack-') }}
         run: terraform -chdir=terraform/environments/prod init
 
       - name: Terraform prod validate
-        if: ${{ inputs.command == 'plan' || inputs.command == 'apply' }}
+        if: ${{ inputs.command == 'plan' || inputs.command == 'apply' || startsWith(inputs.command, 'cleanup-accidental-stack-') }}
         run: terraform -chdir=terraform/environments/prod validate
 
       - name: Terraform prod plan
-        if: ${{ inputs.command == 'plan' || inputs.command == 'apply' }}
+        if: ${{ inputs.command == 'plan' || inputs.command == 'apply' || startsWith(inputs.command, 'cleanup-accidental-stack-') }}
         run: terraform -chdir=terraform/environments/prod plan -out=production.tfplan
+
+      - name: Cleanup accidental production stack preview
+        if: ${{ inputs.command == 'cleanup-accidental-stack-plan' }}
+        run: ./scripts/cleanup-accidental-prod-stack.sh plan
+
+      - name: Cleanup accidental production stack apply
+        if: ${{ inputs.command == 'cleanup-accidental-stack-apply' }}
+        run: ./scripts/cleanup-accidental-prod-stack.sh apply
 
       - name: Terraform prod apply
         if: ${{ inputs.command == 'apply' }}
