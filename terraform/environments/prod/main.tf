@@ -199,7 +199,7 @@ resource "aws_db_instance" "shaka" {
   identifier = "${local.name_prefix}-mysql"
 
   engine         = "mysql"
-  engine_version = "8.0.35"
+  engine_version = var.db_engine_version
   instance_class = var.db_instance_class
 
   allocated_storage     = 20
