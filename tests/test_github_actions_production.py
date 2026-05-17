@@ -13,6 +13,7 @@ class GitHubActionsProductionTest(unittest.TestCase):
         text = WORKFLOW.read_text()
         self.assertIn("workflow_dispatch:", text)
         self.assertIn("environment: production", text)
+        self.assertIn("if: github.ref_name == 'main'", text)
         self.assertIn("TF_VAR_db_username: ${{ secrets.SHAKA_DB_USERNAME }}", text)
         self.assertIn("TF_VAR_db_password: ${{ secrets.SHAKA_DB_PASSWORD }}", text)
         self.assertIn("SHAKA_AVAILABILITY_ZONES_JSON", text)
