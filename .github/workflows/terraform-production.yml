@@ -35,6 +35,7 @@ concurrency:
 jobs:
   terraform-production:
     name: Terraform production ${{ inputs.command }}
+    if: github.ref_name == 'main'
     runs-on: ubuntu-latest
     environment: production
     env:

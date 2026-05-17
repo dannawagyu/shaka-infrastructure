@@ -3,6 +3,7 @@ name: Terraform CI
 on:
   pull_request:
     branches:
+      - dev
       - main
     paths:
       - ".github/workflows/terraform-ci.yml"
@@ -14,7 +15,7 @@ on:
       - "docs/**"
   push:
     branches:
-      - main
+      - dev
     paths:
       - ".github/workflows/terraform-ci.yml"
       - ".github/workflows/hermes-pr-review.yml"

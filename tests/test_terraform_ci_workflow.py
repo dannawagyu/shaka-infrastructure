@@ -14,11 +14,12 @@ class TerraformCIWorkflowTest(unittest.TestCase):
         self.workflow = WORKFLOW.read_text(encoding="utf-8")
         self.script = VALIDATE_SCRIPT.read_text(encoding="utf-8")
 
-    def test_pr_validation_runs_on_main_with_least_privilege(self):
+    def test_pr_validation_runs_on_gitflow_branches_with_least_privilege(self):
         self.assertIn("name: Terraform CI", self.workflow)
         self.assertIn("pull_request:", self.workflow)
-        self.assertRegex(self.workflow, r"(?s)pull_request:.*?branches:.*?-\s*main")
-        self.assertIn("push:", self.workflow)
+        self.assertRegex(self.workflow, r"(?s)pull_request:.*?branches:.*?-\s*dev.*?-\s*main")
+        self.assertRegex(self.workflow, r"(?s)push:.*?branches:.*?-\s*dev")
+        self.assertNotRegex(self.workflow, r"(?s)push:.*?branches:.*?-\s*main")
         self.assertIn("permissions:\n  contents: read", self.workflow)
         self.assertNotIn("id-token: write", self.workflow)
         self.assertNotIn("write-all", self.workflow)
