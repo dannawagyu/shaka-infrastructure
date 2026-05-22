@@ -46,6 +46,14 @@ class GitHubActionsProductionTest(unittest.TestCase):
         self.assertIn("TF_VAR_grafana_cloud_url: ${{ vars.GRAFANA_CLOUD_URL }}", text)
         self.assertIn("TF_VAR_grafana_auth: ${{ secrets.TF_VAR_GRAFANA_AUTH }}", text)
         self.assertIn("TF_VAR_prometheus_datasource_uid: ${{ vars.GRAFANA_PROMETHEUS_DATASOURCE_UID }}", text)
+
+        job_env = text.split("    steps:", 1)[0]
+        for grafana_job_env in [
+            "TF_VAR_grafana_cloud_url: ${{ vars.GRAFANA_CLOUD_URL }}",
+            "TF_VAR_grafana_auth: ${{ secrets.TF_VAR_GRAFANA_AUTH }}",
+            "TF_VAR_prometheus_datasource_uid: ${{ vars.GRAFANA_PROMETHEUS_DATASOURCE_UID }}",
+        ]:
+            self.assertNotIn(grafana_job_env, job_env)
         self.assertIn("case \"$TF_VAR_grafana_cloud_url\" in", text)
         self.assertIn("https://*.grafana.net|https://*.grafana.com", text)
         self.assertIn("terraform -chdir=terraform/observability/grafana init -input=false", text)
