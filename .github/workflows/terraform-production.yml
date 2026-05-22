@@ -128,6 +128,8 @@ jobs:
             printf 'Missing required Grafana environment values: %s\n' "${missing[*]}" >&2
             exit 1
           fi
+          TF_VAR_grafana_cloud_url="${TF_VAR_grafana_cloud_url%/}"
+          echo "TF_VAR_grafana_cloud_url=$TF_VAR_grafana_cloud_url" >> "$GITHUB_ENV"
           case "$TF_VAR_grafana_cloud_url" in
             https://*.grafana.net|https://*.grafana.com) ;;
             *)
