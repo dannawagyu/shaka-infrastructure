@@ -54,13 +54,13 @@ If these fail, do not apply dashboards as a substitute for ingestion debugging. 
 
 ```bash
 cd terraform/observability/grafana
-terraform init -backend=false
+terraform init
 terraform fmt -check
 terraform validate
 terraform plan
 ```
 
-Only run `terraform apply` after Auden approval and after reviewing the plan for unexpected dashboard/folder/alert changes. Applying this dashboard changes Grafana Cloud UI resources only; it does not deploy the server or modify AWS resources.
+Only run `terraform apply` after maintainer approval and after reviewing the plan for unexpected dashboard/folder/alert changes. Applying this dashboard changes Grafana Cloud UI resources only; it does not deploy the server or modify AWS resources.
 
 ## Post-apply verification
 
