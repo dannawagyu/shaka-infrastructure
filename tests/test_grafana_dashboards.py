@@ -15,11 +15,11 @@ DOC = ROOT / "docs" / "observability" / "grafana-dashboards.md"
 REQUIRED_QUERIES = [
     'up{job="shaka-server",deployment_environment="prod"}',
     'up{job="shaka-host",deployment_environment="prod"}',
-    'jvm_memory_used_bytes{job="shaka-server",deployment_environment="prod"',
-    'node_cpu_seconds_total{job="shaka-host",deployment_environment="prod"',
-    'node_systemd_unit_state{job="shaka-host",deployment_environment="prod"',
-    'http_server_requests_seconds_count{job="shaka-server",deployment_environment="prod"',
-    'node_filesystem_avail_bytes{job="shaka-host",deployment_environment="prod"',
+    'jvm_memory_used_bytes{job="shaka-server",deployment_environment="prod",',
+    'node_cpu_seconds_total{job="shaka-host",deployment_environment="prod",',
+    'node_systemd_unit_state{job="shaka-host",deployment_environment="prod",',
+    'http_server_requests_seconds_count{job="shaka-server",deployment_environment="prod",',
+    'node_filesystem_avail_bytes{job="shaka-host",deployment_environment="prod",',
 ]
 
 FORBIDDEN = [
