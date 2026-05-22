@@ -9,7 +9,7 @@ Dashboard-as-Code lives under `terraform/observability/grafana/` and reuses the 
 - `grafana_dashboard.shaka_prod_overview`
 - `dashboards/shaka-prod-overview.json.tftpl`
 
-The dashboard is Prometheus/Mimir-only. It does not enable Loki log ingestion, Tempo tracing, alert routing, Discord webhooks, or any production runtime change.
+The dashboard is Prometheus/Mimir-only. It does not enable Loki log ingestion, Tempo tracing, alert routing, Discord webhooks, or any production runtime change. Panels are managed as code with Grafana UI editing disabled (`editable = false` in the rendered dashboard JSON) so Terraform remains the source of truth.
 
 ## Required operator inputs
 
@@ -41,9 +41,9 @@ If these fail, do not apply dashboards as a substitute for ingestion debugging. 
 
 `Shaka Prod Overview` includes:
 
-- app scrape status: `up{job="shaka-server"}`;
-- host scrape status: `up{job="shaka-host"}`;
-- service label inventory from `up`;
+- app scrape status: `up{job="shaka-server",deployment_environment="prod"}`;
+- host scrape status: `up{job="shaka-host",deployment_environment="prod"}`;
+- service label inventory from `up`, filtered by `deployment_environment`;
 - core systemd service state for `shaka-server.service`, `nginx.service`, and `alloy.service`;
 - HTTP request and 5xx rates;
 - JVM heap and memory panels;
