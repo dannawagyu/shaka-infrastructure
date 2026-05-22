@@ -54,6 +54,8 @@ class GitHubActionsProductionTest(unittest.TestCase):
             "TF_VAR_prometheus_datasource_uid: ${{ vars.GRAFANA_PROMETHEUS_DATASOURCE_UID }}",
         ]:
             self.assertNotIn(grafana_job_env, job_env)
+        self.assertIn('TF_VAR_grafana_cloud_url="${TF_VAR_grafana_cloud_url%/}"', text)
+        self.assertIn('echo "TF_VAR_grafana_cloud_url=$TF_VAR_grafana_cloud_url" >> "$GITHUB_ENV"', text)
         self.assertIn("case \"$TF_VAR_grafana_cloud_url\" in", text)
         self.assertIn("https://*.grafana.net|https://*.grafana.com", text)
         self.assertIn("terraform -chdir=terraform/observability/grafana init -input=false", text)
