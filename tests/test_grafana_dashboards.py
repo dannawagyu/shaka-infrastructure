@@ -13,13 +13,13 @@ DASHBOARD = GRAFANA_DIR / "dashboards" / "shaka-prod-overview.json.tftpl"
 DOC = ROOT / "docs" / "observability" / "grafana-dashboards.md"
 
 REQUIRED_QUERIES = [
-    'up{job="shaka-server"}',
-    'up{job="shaka-host"}',
-    'jvm_memory_used_bytes{job="shaka-server"',
-    'node_cpu_seconds_total{job="shaka-host"',
-    'node_systemd_unit_state{job="shaka-host"',
-    'http_server_requests_seconds_count{job="shaka-server"',
-    'node_filesystem_avail_bytes{job="shaka-host"',
+    'up{job="shaka-server",deployment_environment="prod"}',
+    'up{job="shaka-host",deployment_environment="prod"}',
+    'jvm_memory_used_bytes{job="shaka-server",deployment_environment="prod"',
+    'node_cpu_seconds_total{job="shaka-host",deployment_environment="prod"',
+    'node_systemd_unit_state{job="shaka-host",deployment_environment="prod"',
+    'http_server_requests_seconds_count{job="shaka-server",deployment_environment="prod"',
+    'node_filesystem_avail_bytes{job="shaka-host",deployment_environment="prod"',
 ]
 
 FORBIDDEN = [
@@ -43,7 +43,7 @@ class GrafanaDashboardsTest(unittest.TestCase):
 
     def test_dashboard_json_is_parseable_after_template_substitution(self) -> None:
         text = DASHBOARD.read_text()
-        rendered = text.replace('${prometheus_datasource_uid}', 'prometheus-test-uid').replace('${environment}', 'prod')
+        rendered = text.replace('${prometheus_datasource_uid}', 'prometheus-test-uid').replace('${environment_title}', 'Prod').replace('${environment}', 'prod')
         model = json.loads(rendered)
         self.assertEqual(model['uid'], 'shaka-prod-overview')
         self.assertEqual(model['title'], 'Shaka Prod Overview')
@@ -52,7 +52,7 @@ class GrafanaDashboardsTest(unittest.TestCase):
         self.assertIn('terraform', model.get('tags', []))
 
     def test_dashboard_queries_match_live_alloy_labels(self) -> None:
-        rendered = DASHBOARD.read_text().replace('${prometheus_datasource_uid}', 'prometheus-test-uid').replace('${environment}', 'prod')
+        rendered = DASHBOARD.read_text().replace('${prometheus_datasource_uid}', 'prometheus-test-uid').replace('${environment_title}', 'Prod').replace('${environment}', 'prod')
         model = json.loads(rendered)
         expressions = []
         for panel in model.get('panels', []):
@@ -64,6 +64,8 @@ class GrafanaDashboardsTest(unittest.TestCase):
             self.assertIn(query, expression_text, f"dashboard missing query evidence: {query}")
         self.assertNotIn('mysql.service', expression_text)
         self.assertNotIn('127.0.0.1:9090', expression_text)
+        self.assertNotIn('service_instance_id', expression_text)
+        self.assertNotIn('instance,', expression_text)
 
     def test_dashboard_contains_no_secrets_or_webhooks(self) -> None:
         combined = DASHBOARDS_TF.read_text() + "\n" + DASHBOARD.read_text()
@@ -82,6 +84,8 @@ class GrafanaDashboardsTest(unittest.TestCase):
             "jvm_memory_used_bytes",
             "node_cpu_seconds_total",
             "No secrets",
+            "deployment_environment",
+            "editable",
         ]:
             self.assertIn(phrase, text)
 
