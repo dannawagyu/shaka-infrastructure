@@ -15,12 +15,14 @@ on:
           - cleanup-accidental-stack-apply
           - bootstrap-backend-plan
           - bootstrap-backend-apply
+          - grafana-dashboard-plan
+          - grafana-dashboard-apply
       accidental_vpc_id:
         description: "Optional accidental VPC ID for cleanup when stale Terraform state has already been removed"
         required: false
         type: string
       apply_confirmation:
-        description: "Required for apply commands: apply-production, cleanup-accidental-stack, or bootstrap-production-backend"
+        description: "Required for apply commands: apply-production, cleanup-accidental-stack, bootstrap-production-backend, or apply-grafana-dashboard"
         required: false
         type: string
 
@@ -51,6 +53,9 @@ jobs:
       SHAKA_ACCIDENTAL_VPC_ID: ${{ inputs.accidental_vpc_id }}
       TF_VAR_db_username: ${{ secrets.SHAKA_DB_USERNAME }}
       TF_VAR_db_password: ${{ secrets.SHAKA_DB_PASSWORD }}
+      TF_VAR_grafana_cloud_url: ${{ vars.GRAFANA_CLOUD_URL }}
+      TF_VAR_grafana_auth: ${{ secrets.TF_VAR_GRAFANA_AUTH }}
+      TF_VAR_prometheus_datasource_uid: ${{ vars.GRAFANA_PROMETHEUS_DATASOURCE_UID }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -60,7 +65,7 @@ jobs:
         run: |
           set -euo pipefail
           case "${{ inputs.command }}" in
-            plan|bootstrap-backend-plan|cleanup-accidental-stack-plan)
+            plan|bootstrap-backend-plan|cleanup-accidental-stack-plan|grafana-dashboard-plan)
               ;;
             apply)
               if [[ "${{ inputs.apply_confirmation }}" != "apply-production" ]]; then
@@ -77,6 +82,12 @@ jobs:
             bootstrap-backend-apply)
               if [[ "${{ inputs.apply_confirmation }}" != "bootstrap-production-backend" ]]; then
                 echo "bootstrap-backend-apply requires apply_confirmation=bootstrap-production-backend" >&2
+                exit 1
+              fi
+              ;;
+            grafana-dashboard-apply)
+              if [[ "${{ inputs.apply_confirmation }}" != "apply-grafana-dashboard" ]]; then
+                echo "grafana-dashboard-apply requires apply_confirmation=apply-grafana-dashboard" >&2
                 exit 1
               fi
               ;;
@@ -99,6 +110,50 @@ jobs:
         with:
           terraform_version: 1.15.2
           terraform_wrapper: false
+
+
+      - name: Validate Grafana dashboard inputs
+        if: ${{ startsWith(inputs.command, 'grafana-dashboard-') }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          missing=()
+          for name in TF_VAR_grafana_cloud_url TF_VAR_grafana_auth TF_VAR_prometheus_datasource_uid; do
+            if [[ -z "${!name:-}" ]]; then
+              missing+=("$name")
+            fi
+          done
+          if (( ${#missing[@]} > 0 )); then
+            printf 'Missing required Grafana environment values: %s\n' "${missing[*]}" >&2
+            exit 1
+          fi
+          case "$TF_VAR_grafana_cloud_url" in
+            https://*.grafana.net|https://*.grafana.com) ;;
+            *)
+              echo "Invalid Grafana Cloud URL" >&2
+              exit 1
+              ;;
+          esac
+
+      - name: Terraform Grafana dashboard fmt check
+        if: ${{ startsWith(inputs.command, 'grafana-dashboard-') }}
+        run: terraform -chdir=terraform/observability/grafana fmt -check -recursive
+
+      - name: Terraform Grafana dashboard init
+        if: ${{ startsWith(inputs.command, 'grafana-dashboard-') }}
+        run: terraform -chdir=terraform/observability/grafana init -input=false
+
+      - name: Terraform Grafana dashboard validate
+        if: ${{ startsWith(inputs.command, 'grafana-dashboard-') }}
+        run: terraform -chdir=terraform/observability/grafana validate
+
+      - name: Terraform Grafana dashboard plan
+        if: ${{ startsWith(inputs.command, 'grafana-dashboard-') }}
+        run: terraform -chdir=terraform/observability/grafana plan -input=false -out=grafana-dashboard.tfplan
+
+      - name: Terraform Grafana dashboard apply
+        if: ${{ inputs.command == 'grafana-dashboard-apply' }}
+        run: terraform -chdir=terraform/observability/grafana apply -input=false grafana-dashboard.tfplan
 
       - name: Materialize non-secret production variables
         if: ${{ inputs.command == 'plan' || inputs.command == 'apply' || startsWith(inputs.command, 'cleanup-accidental-stack-') }}
