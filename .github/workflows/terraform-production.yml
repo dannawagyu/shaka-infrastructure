@@ -53,9 +53,6 @@ jobs:
       SHAKA_ACCIDENTAL_VPC_ID: ${{ inputs.accidental_vpc_id }}
       TF_VAR_db_username: ${{ secrets.SHAKA_DB_USERNAME }}
       TF_VAR_db_password: ${{ secrets.SHAKA_DB_PASSWORD }}
-      TF_VAR_grafana_cloud_url: ${{ vars.GRAFANA_CLOUD_URL }}
-      TF_VAR_grafana_auth: ${{ secrets.TF_VAR_GRAFANA_AUTH }}
-      TF_VAR_prometheus_datasource_uid: ${{ vars.GRAFANA_PROMETHEUS_DATASOURCE_UID }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -115,6 +112,10 @@ jobs:
       - name: Validate Grafana dashboard inputs
         if: ${{ startsWith(inputs.command, 'grafana-dashboard-') }}
         shell: bash
+        env:
+          TF_VAR_grafana_cloud_url: ${{ vars.GRAFANA_CLOUD_URL }}
+          TF_VAR_grafana_auth: ${{ secrets.TF_VAR_GRAFANA_AUTH }}
+          TF_VAR_prometheus_datasource_uid: ${{ vars.GRAFANA_PROMETHEUS_DATASOURCE_UID }}
         run: |
           set -euo pipefail
           missing=()
@@ -149,10 +150,18 @@ jobs:
 
       - name: Terraform Grafana dashboard plan
         if: ${{ startsWith(inputs.command, 'grafana-dashboard-') }}
+        env:
+          TF_VAR_grafana_cloud_url: ${{ vars.GRAFANA_CLOUD_URL }}
+          TF_VAR_grafana_auth: ${{ secrets.TF_VAR_GRAFANA_AUTH }}
+          TF_VAR_prometheus_datasource_uid: ${{ vars.GRAFANA_PROMETHEUS_DATASOURCE_UID }}
         run: terraform -chdir=terraform/observability/grafana plan -input=false -out=grafana-dashboard.tfplan
 
       - name: Terraform Grafana dashboard apply
         if: ${{ inputs.command == 'grafana-dashboard-apply' }}
+        env:
+          TF_VAR_grafana_cloud_url: ${{ vars.GRAFANA_CLOUD_URL }}
+          TF_VAR_grafana_auth: ${{ secrets.TF_VAR_GRAFANA_AUTH }}
+          TF_VAR_prometheus_datasource_uid: ${{ vars.GRAFANA_PROMETHEUS_DATASOURCE_UID }}
         run: terraform -chdir=terraform/observability/grafana apply -input=false grafana-dashboard.tfplan
 
       - name: Materialize non-secret production variables
