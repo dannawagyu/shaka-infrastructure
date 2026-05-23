@@ -67,6 +67,22 @@ class GrafanaDashboardRenderingTest(unittest.TestCase):
         self.assertIn('resource.service.name = "shaka-server"', trace_query)
         self.assertIn('resource.deployment.environment = "prod"', trace_query)
 
+    def test_loki_and_tempo_queries_avoid_sensitive_or_high_cardinality_filters(self) -> None:
+        dashboard = self.rendered_dashboard()
+        query_text = []
+        for panel in dashboard.get("panels", []):
+            if panel.get("datasource", {}).get("type") in {"loki", "tempo"}:
+                for target in panel.get("targets", []):
+                    query_text.append(target.get("expr", ""))
+                    query_text.append(target.get("query", ""))
+        combined = "\n".join(query_text)
+        for unsafe in [
+            "user", "user_id", "userId", "ip", "client_ip", "request_id",
+            "requestId", "instance", "service_instance_id", "path", "url",
+            "Authorization", "authorization", "jwt", "JWT",
+        ]:
+            self.assertNotIn(unsafe, combined)
+
     def test_terraform_wires_dashboard_datasource_uids_without_literal_secrets(self) -> None:
         combined = "\n".join(
             path.read_text(encoding="utf-8")
