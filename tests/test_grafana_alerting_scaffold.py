@@ -69,6 +69,16 @@ class GrafanaAlertingScaffoldTest(unittest.TestCase):
             "Discord contact point should be documented as manual unless secret-in-state tradeoff changes",
         )
 
+    def test_memory_pressure_alert_is_available_memory_below_10_percent(self) -> None:
+        tf = self.read_all_tf()
+        memory_rule = re.search(r'memory_pressure\s+=\s+\{(?P<body>[\s\S]*?)\n\s+\}', tf)
+        self.assertIsNotNone(memory_rule, "missing memory_pressure alert rule")
+        body = memory_rule.group('body')
+        self.assertIn('node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes', body)
+        self.assertIn('> 0.90', body)
+        self.assertIn('available memory is below 10%', body)
+        self.assertIn('usage above 90%', body)
+
     def test_docs_cover_safe_operations_and_discord_test(self) -> None:
         self.assertTrue(DOC.is_file(), f"missing runbook: {DOC}")
         text = DOC.read_text()
