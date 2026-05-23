@@ -50,7 +50,7 @@ resource "grafana_rule_group" "shaka_rfc_0010" {
       memory_pressure = {
         title     = "Shaka host memory pressure"
         condition = "1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) > 0.90"
-        summary   = "Host memory usage is above 90%."
+        summary   = "Host available memory is below 10% (usage above 90%)."
       }
       cpu_saturation = {
         title     = "Shaka host CPU saturation"

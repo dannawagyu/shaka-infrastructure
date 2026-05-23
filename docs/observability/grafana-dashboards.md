@@ -45,9 +45,10 @@ If these fail, do not apply dashboards as a substitute for ingestion debugging. 
 - host scrape status: `up{job="shaka-host",deployment_environment="prod"}`;
 - service label inventory from `up`, filtered by `deployment_environment`;
 - core systemd service state for `shaka-server.service`, `nginx.service`, and `alloy.service`;
-- HTTP request and 5xx rates;
+- HTTP request and 5xx rates; the 5xx panel renders 0 when there are no error series;
+- `HTTP 401 rate by URI` for route-level only 401 spike triage, with no user IDs, IP addresses, or request IDs;
 - JVM heap and memory panels;
-- host CPU, memory, and root disk panels;
+- host CPU, memory, and root disk panels, with memory pressure centered on available memory below 10%;
 - metric ingestion inventory table.
 
 ## Safe plan/apply workflow
@@ -71,3 +72,9 @@ After apply:
 3. Confirm app and host scrape stat panels show `1`.
 4. Confirm JVM and host graphs show recent data over the last 15 minutes.
 5. Confirm no panel query uses local-only addresses, secrets, user IDs, or high-cardinality Loki/Tempo labels.
+
+## Follow-up diagnostics notes
+
+- The HTTP 5xx panel must render `0` rather than `No data` when no 5xx time series exists, so operators can distinguish zero errors from broken ingestion.
+- `HTTP 401 rate by URI` is route-level only: it groups by Micrometer `method`, `uri`, and `status`. Do not add user IDs, IP addresses, request IDs, raw paths, `instance`, or `service_instance_id` to this panel. Keep `UNKNOWN` route values visible so unmapped auth probes are not hidden; if raw paths ever appear in the `uri` label, fix application instrumentation before sharing screenshots or widening dashboard access.
+- Host memory pressure is treated as available memory below 10% / usage above 90%. The dashboard turns red below 10% available and green at or above 20% available.
