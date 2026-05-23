@@ -32,7 +32,14 @@ FORBIDDEN = [
 
 class GrafanaDashboardsTest(unittest.TestCase):
     def rendered_dashboard(self) -> dict:
-        rendered = DASHBOARD.read_text().replace('${prometheus_datasource_uid}', 'prometheus-test-uid').replace('${environment_title}', 'Prod').replace('${environment}', 'prod')
+        rendered = (
+            DASHBOARD.read_text()
+            .replace('${prometheus_datasource_uid}', 'prometheus-test-uid')
+            .replace('${loki_datasource_uid}', 'loki-test-uid')
+            .replace('${tempo_datasource_uid}', 'tempo-test-uid')
+            .replace('${environment_title}', 'Prod')
+            .replace('${environment}', 'prod')
+        )
         return json.loads(rendered)
 
     def panel_by_title(self, title: str) -> dict:
@@ -50,7 +57,43 @@ class GrafanaDashboardsTest(unittest.TestCase):
         self.assertIn('grafana_folder.shaka_observability.uid', tf)
         self.assertIn('templatefile("${path.module}/dashboards/shaka-prod-overview.json.tftpl"', tf)
         self.assertIn('prometheus_datasource_uid = var.prometheus_datasource_uid', tf)
+        self.assertIn('loki_datasource_uid       = var.loki_datasource_uid', tf)
+        self.assertIn('tempo_datasource_uid      = var.tempo_datasource_uid', tf)
         self.assertIn('overwrite = true', tf)
+
+
+    def test_loki_and_tempo_dashboard_datasource_uid_variables_exist(self) -> None:
+        variables = (GRAFANA_DIR / "variables.tf").read_text()
+        self.assertIn('variable "loki_datasource_uid"', variables)
+        self.assertIn('variable "tempo_datasource_uid"', variables)
+        self.assertNotRegex(variables, r'variable\s+"loki_datasource_uid"[\s\S]*?sensitive\s+=\s+true')
+        self.assertNotRegex(variables, r'variable\s+"tempo_datasource_uid"[\s\S]*?sensitive\s+=\s+true')
+
+    def test_loki_panels_use_safe_datasource_and_low_cardinality_labels_only(self) -> None:
+        for title in ['Loki log entries, last 5m', 'Recent application logs']:
+            panel = self.panel_by_title(title)
+            self.assertEqual(panel['datasource']['type'], 'loki')
+            self.assertEqual(panel['datasource']['uid'], 'loki-test-uid')
+            target = panel['targets'][0]
+            self.assertEqual(target['datasource']['uid'], 'loki-test-uid')
+            expr = target['expr']
+            self.assertIn('service_name="shaka-server"', expr)
+            self.assertIn('deployment_environment="prod"', expr)
+            for unsafe in ['user', 'user_id', 'userId', 'ip', 'client_ip', 'request_id', 'requestId', 'instance', 'service_instance_id', 'path', 'url', 'Authorization', 'jwt']:
+                self.assertNotIn(unsafe, expr)
+
+    def test_tempo_trace_panel_uses_safe_datasource_and_resource_filters_only(self) -> None:
+        panel = self.panel_by_title('Recent Tempo traces')
+        self.assertEqual(panel['datasource']['type'], 'tempo')
+        self.assertEqual(panel['datasource']['uid'], 'tempo-test-uid')
+        target = panel['targets'][0]
+        self.assertEqual(target['datasource']['uid'], 'tempo-test-uid')
+        self.assertEqual(target['queryType'], 'traceql')
+        query = target['query']
+        self.assertIn('resource.service.name = "shaka-server"', query)
+        self.assertIn('resource.deployment.environment = "prod"', query)
+        for unsafe in ['user', 'user_id', 'userId', 'ip', 'client_ip', 'request_id', 'requestId', 'instance', 'service.instance', 'service_instance_id', 'path', 'url', 'Authorization', 'jwt']:
+            self.assertNotIn(unsafe, query)
 
     def test_dashboard_json_is_parseable_after_template_substitution(self) -> None:
         model = self.rendered_dashboard()
@@ -135,6 +178,8 @@ class GrafanaDashboardsTest(unittest.TestCase):
             "terraform plan",
             "terraform apply",
             "TF_VAR_prometheus_datasource_uid",
+            "TF_VAR_loki_datasource_uid",
+            "TF_VAR_tempo_datasource_uid",
             "up{job=\"shaka-server\"}",
             "up{job=\"shaka-host\"}",
             "jvm_memory_used_bytes",
@@ -147,6 +192,11 @@ class GrafanaDashboardsTest(unittest.TestCase):
             "route-level only",
             "no user IDs, IP addresses, or request IDs",
             "available memory below 10%",
+            "Loki log entries, last 5m",
+            "Recent application logs",
+            "Recent Tempo traces",
+            "resource.service.name",
+            "resource.deployment.environment",
         ]:
             self.assertIn(phrase, text)
 
