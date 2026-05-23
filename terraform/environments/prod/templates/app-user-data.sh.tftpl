@@ -149,7 +149,7 @@ prometheus.exporter.unix "shaka_host" {
   }
 
   systemd {
-    unit_include = "^(shaka-server|nginx|alloy)\\.service$"
+    unit_include = "^(shaka-server|nginx|alloy)[.]service$"
   }
 }
 
