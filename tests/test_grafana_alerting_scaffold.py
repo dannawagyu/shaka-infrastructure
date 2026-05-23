@@ -105,7 +105,7 @@ class GrafanaAlertingScaffoldTest(unittest.TestCase):
             'replacement  = "shaka-host"',
             'target_label = "service_name"',
             'target_label = "deployment_environment"',
-            'unit_include = "^(shaka-server|nginx|alloy)\\\\.service$"',
+            'unit_include = "^(shaka-server|nginx|alloy)[.]service$"',
             'enable_collectors = ["systemd"]',
             'ExecStartPre=/usr/local/sbin/validate-alloy-grafana-cloud-env',
             'owner_group="$(stat -c',
