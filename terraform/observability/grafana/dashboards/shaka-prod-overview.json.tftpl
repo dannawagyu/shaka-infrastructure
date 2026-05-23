@@ -861,7 +861,7 @@
         "x": 0,
         "y": 43,
         "w": 6,
-        "h": 4
+        "h": 8
       },
       "datasource": {
         "type": "loki",
@@ -873,7 +873,7 @@
             "type": "loki",
             "uid": "${loki_datasource_uid}"
           },
-          "expr": "sum(count_over_time({service_name=\"shaka-server\",deployment_environment=\"${environment}\"}[5m]))",
+          "expr": "(sum(count_over_time({service_name=\"shaka-server\",deployment_environment=\"${environment}\"}[5m])) or vector(0))",
           "queryType": "range",
           "refId": "A"
         }
