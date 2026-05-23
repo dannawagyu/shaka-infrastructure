@@ -62,7 +62,24 @@
                 "value": 1
               }
             ]
-          }
+          },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "DOWN",
+                  "color": "red",
+                  "index": 0
+                },
+                "1": {
+                  "text": "UP",
+                  "color": "green",
+                  "index": 1
+                }
+              }
+            }
+          ]
         },
         "overrides": []
       },
@@ -77,7 +94,9 @@
         "orientation": "auto",
         "colorMode": "background",
         "graphMode": "none",
-        "justifyMode": "auto"
+        "justifyMode": "auto",
+        "textMode": "value",
+        "wideLayout": true
       },
       "description": "1 means Alloy can scrape Spring Boot /actuator/prometheus locally."
     },
@@ -122,7 +141,24 @@
                 "value": 1
               }
             ]
-          }
+          },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "DOWN",
+                  "color": "red",
+                  "index": 0
+                },
+                "1": {
+                  "text": "UP",
+                  "color": "green",
+                  "index": 1
+                }
+              }
+            }
+          ]
         },
         "overrides": []
       },
@@ -137,7 +173,9 @@
         "orientation": "auto",
         "colorMode": "background",
         "graphMode": "none",
-        "justifyMode": "auto"
+        "justifyMode": "auto",
+        "textMode": "value",
+        "wideLayout": true
       },
       "description": "1 means Alloy host exporter metrics are reaching Grafana Cloud."
     },
@@ -171,7 +209,37 @@
       ],
       "fieldConfig": {
         "defaults": {
-          "unit": "short"
+          "unit": "short",
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "MISSING",
+                  "color": "red",
+                  "index": 0
+                },
+                "1": {
+                  "text": "PRESENT",
+                  "color": "green",
+                  "index": 1
+                }
+              }
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          }
         },
         "overrides": []
       },
@@ -186,7 +254,9 @@
         "orientation": "auto",
         "colorMode": "value",
         "graphMode": "none",
-        "justifyMode": "auto"
+        "justifyMode": "auto",
+        "textMode": "value",
+        "wideLayout": true
       }
     },
     {
@@ -231,7 +301,24 @@
                 "value": 1
               }
             ]
-          }
+          },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "DOWN",
+                  "color": "red",
+                  "index": 0
+                },
+                "1": {
+                  "text": "ACTIVE",
+                  "color": "green",
+                  "index": 1
+                }
+              }
+            }
+          ]
         },
         "overrides": []
       },
@@ -246,7 +333,9 @@
         "orientation": "auto",
         "colorMode": "background",
         "graphMode": "none",
-        "justifyMode": "auto"
+        "justifyMode": "auto",
+        "textMode": "value",
+        "wideLayout": true
       }
     },
     {
@@ -315,7 +404,7 @@
             "uid": "${prometheus_datasource_uid}"
           },
           "editorMode": "code",
-          "expr": "sum(rate(http_server_requests_seconds_count{job=\"shaka-server\",deployment_environment=\"${environment}\",status=~\"5..\"}[5m]))",
+          "expr": "(sum(rate(http_server_requests_seconds_count{job=\"shaka-server\",deployment_environment=\"${environment}\",status=~\"5..\"}[5m])) or vector(0))",
           "instant": false,
           "range": true,
           "refId": "A",
@@ -563,11 +652,11 @@
               },
               {
                 "color": "orange",
-                "value": 15
+                "value": 10
               },
               {
                 "color": "green",
-                "value": 30
+                "value": 20
               }
             ]
           }
@@ -717,6 +806,191 @@
       "options": {
         "showHeader": true
       }
+    },
+    {
+      "id": 14,
+      "type": "timeseries",
+      "title": "HTTP 401 rate by URI",
+      "gridPos": {
+        "x": 0,
+        "y": 35,
+        "w": 24,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${prometheus_datasource_uid}"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${prometheus_datasource_uid}"
+          },
+          "editorMode": "code",
+          "expr": "topk(10, sum by (uri, method, status) (rate(http_server_requests_seconds_count{job=\"shaka-server\",deployment_environment=\"${environment}\",status=\"401\"}[5m])))",
+          "instant": false,
+          "range": true,
+          "refId": "A",
+          "legendFormat": "{{method}} {{uri}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "description": "Route-template level 401 diagnostics for auth spikes. Uses Micrometer uri/method/status only; never user, IP, request ID, or instance labels."
+    },
+    {
+      "id": 15,
+      "type": "stat",
+      "title": "Loki log entries, last 5m",
+      "gridPos": {
+        "x": 0,
+        "y": 43,
+        "w": 6,
+        "h": 8
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "${loki_datasource_uid}"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "${loki_datasource_uid}"
+          },
+          "expr": "(sum(count_over_time({service_name=\"shaka-server\",deployment_environment=\"${environment}\"}[5m])) or vector(0))",
+          "queryType": "range",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "NO LOGS",
+                  "color": "red",
+                  "index": 0
+                }
+              }
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "textMode": "value",
+        "wideLayout": true
+      },
+      "description": "Counts recent Loki log entries using only service_name and deployment_environment labels. Do not add user, IP, request ID, instance, or raw path labels."
+    },
+    {
+      "id": 16,
+      "type": "logs",
+      "title": "Recent application logs",
+      "gridPos": {
+        "x": 6,
+        "y": 43,
+        "w": 18,
+        "h": 8
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "${loki_datasource_uid}"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "${loki_datasource_uid}"
+          },
+          "expr": "{service_name=\"shaka-server\",deployment_environment=\"${environment}\"}",
+          "queryType": "range",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "dedupStrategy": "none",
+        "enableLogDetails": true,
+        "prettifyLogMessage": false,
+        "showCommonLabels": false,
+        "showLabels": false,
+        "showTime": true,
+        "sortOrder": "Descending",
+        "wrapLogMessage": true
+      },
+      "description": "Recent app logs only. Query is intentionally limited to service_name and deployment_environment labels; do not add user, IP, request ID, instance, or raw path labels."
+    },
+    {
+      "id": 17,
+      "type": "traces",
+      "title": "Recent Tempo traces",
+      "gridPos": {
+        "x": 0,
+        "y": 51,
+        "w": 24,
+        "h": 8
+      },
+      "datasource": {
+        "type": "tempo",
+        "uid": "${tempo_datasource_uid}"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "tempo",
+            "uid": "${tempo_datasource_uid}"
+          },
+          "query": "{ resource.service.name = \"shaka-server\" && resource.deployment.environment = \"${environment}\" }",
+          "queryType": "traceql",
+          "limit": 20,
+          "refId": "A"
+        }
+      ],
+      "options": {},
+      "description": "Recent traces filtered only by stable service/environment resource attributes. Do not add user, IP, request ID, service instance, or raw URL/path attributes."
     }
   ],
   "refresh": "30s",
@@ -726,6 +1000,8 @@
     "${environment}",
     "terraform",
     "prometheus",
+    "loki",
+    "tempo",
     "alloy"
   ],
   "templating": {

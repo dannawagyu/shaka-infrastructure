@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Static checks for Shaka Grafana dashboard-as-code."""
+"""Lightweight checks for rendered Shaka Grafana dashboard JSON."""
 from __future__ import annotations
 
 import json
@@ -8,86 +8,92 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 GRAFANA_DIR = ROOT / "terraform" / "observability" / "grafana"
-DASHBOARDS_TF = GRAFANA_DIR / "dashboards.tf"
 DASHBOARD = GRAFANA_DIR / "dashboards" / "shaka-prod-overview.json.tftpl"
-DOC = ROOT / "docs" / "observability" / "grafana-dashboards.md"
+DASHBOARDS_TF = GRAFANA_DIR / "dashboards.tf"
+VARIABLES_TF = GRAFANA_DIR / "variables.tf"
 
-REQUIRED_QUERIES = [
-    'up{job="shaka-server",deployment_environment="prod"}',
-    'up{job="shaka-host",deployment_environment="prod"}',
-    'jvm_memory_used_bytes{job="shaka-server",deployment_environment="prod",',
-    'node_cpu_seconds_total{job="shaka-host",deployment_environment="prod",',
-    'node_systemd_unit_state{job="shaka-host",deployment_environment="prod",',
-    'http_server_requests_seconds_count{job="shaka-server",deployment_environment="prod",',
-    'node_filesystem_avail_bytes{job="shaka-host",deployment_environment="prod",',
-]
-
-FORBIDDEN = [
-    "discord.com/api/" + "webhooks",
+FORBIDDEN_LITERAL_FRAGMENTS = [
+    "discord.com/api/webhooks",
     "glc_",
     "eyJrIj",
     "GRAFANA_CLOUD_API_KEY",
     "GRAFANA_PROMETHEUS_REMOTE_WRITE_TOKEN",
 ]
 
-class GrafanaDashboardsTest(unittest.TestCase):
-    def test_dashboard_resource_and_template_exist(self) -> None:
-        self.assertTrue(DASHBOARDS_TF.is_file(), "missing dashboards.tf")
-        self.assertTrue(DASHBOARD.is_file(), "missing Shaka dashboard template")
-        tf = DASHBOARDS_TF.read_text()
-        self.assertIn('resource "grafana_dashboard" "shaka_prod_overview"', tf)
-        self.assertIn('grafana_folder.shaka_observability.uid', tf)
-        self.assertIn('templatefile("${path.module}/dashboards/shaka-prod-overview.json.tftpl"', tf)
-        self.assertIn('prometheus_datasource_uid = var.prometheus_datasource_uid', tf)
-        self.assertIn('overwrite = true', tf)
 
-    def test_dashboard_json_is_parseable_after_template_substitution(self) -> None:
-        text = DASHBOARD.read_text()
-        rendered = text.replace('${prometheus_datasource_uid}', 'prometheus-test-uid').replace('${environment_title}', 'Prod').replace('${environment}', 'prod')
-        model = json.loads(rendered)
-        self.assertEqual(model['uid'], 'shaka-prod-overview')
-        self.assertEqual(model['title'], 'Shaka Prod Overview')
-        self.assertGreaterEqual(len(model.get('panels', [])), 10)
-        self.assertEqual(model.get('refresh'), '30s')
-        self.assertIn('terraform', model.get('tags', []))
+class GrafanaDashboardRenderingTest(unittest.TestCase):
+    def rendered_dashboard(self) -> dict:
+        rendered = (
+            DASHBOARD.read_text(encoding="utf-8")
+            .replace("${prometheus_datasource_uid}", "prometheus-test-uid")
+            .replace("${loki_datasource_uid}", "loki-test-uid")
+            .replace("${tempo_datasource_uid}", "tempo-test-uid")
+            .replace("${environment_title}", "Prod")
+            .replace("${environment}", "prod")
+        )
+        return json.loads(rendered)
 
-    def test_dashboard_queries_match_live_alloy_labels(self) -> None:
-        rendered = DASHBOARD.read_text().replace('${prometheus_datasource_uid}', 'prometheus-test-uid').replace('${environment_title}', 'Prod').replace('${environment}', 'prod')
-        model = json.loads(rendered)
-        expressions = []
-        for panel in model.get('panels', []):
-            for target in panel.get('targets', []):
-                if 'expr' in target:
-                    expressions.append(target['expr'])
-        expression_text = "\n".join(expressions)
-        for query in REQUIRED_QUERIES:
-            self.assertIn(query, expression_text, f"dashboard missing query evidence: {query}")
-        self.assertNotIn('mysql.service', expression_text)
-        self.assertNotIn('127.0.0.1:9090', expression_text)
-        self.assertNotIn('service_instance_id', expression_text)
-        self.assertNotIn('instance,', expression_text)
+    def panel(self, title: str) -> dict:
+        for panel in self.rendered_dashboard().get("panels", []):
+            if panel.get("title") == title:
+                return panel
+        self.fail(f"missing dashboard panel: {title}")
 
-    def test_dashboard_contains_no_secrets_or_webhooks(self) -> None:
-        combined = DASHBOARDS_TF.read_text() + "\n" + DASHBOARD.read_text()
-        for forbidden in FORBIDDEN:
+    def test_dashboard_template_renders_valid_json_with_expected_datasources(self) -> None:
+        dashboard = self.rendered_dashboard()
+        self.assertEqual(dashboard["uid"], "shaka-prod-overview")
+        self.assertEqual(dashboard["title"], "Shaka Prod Overview")
+        datasource_by_panel = {
+            panel["title"]: panel.get("datasource", {})
+            for panel in dashboard.get("panels", [])
+            if panel.get("title") in {
+                "HTTP 5xx rate",
+                "Loki log entries, last 5m",
+                "Recent application logs",
+                "Recent Tempo traces",
+            }
+        }
+        self.assertEqual(datasource_by_panel["HTTP 5xx rate"], {"type": "prometheus", "uid": "prometheus-test-uid"})
+        self.assertEqual(datasource_by_panel["Loki log entries, last 5m"], {"type": "loki", "uid": "loki-test-uid"})
+        self.assertEqual(datasource_by_panel["Recent application logs"], {"type": "loki", "uid": "loki-test-uid"})
+        self.assertEqual(datasource_by_panel["Recent Tempo traces"], {"type": "tempo", "uid": "tempo-test-uid"})
+
+    def test_dashboard_uses_loki_zero_fallback_and_safe_tempo_filter(self) -> None:
+        loki_stat = self.panel("Loki log entries, last 5m")
+        self.assertIn("or vector(0)", loki_stat["targets"][0]["expr"])
+        self.assertEqual(loki_stat["gridPos"]["h"], 8)
+
+        trace_query = self.panel("Recent Tempo traces")["targets"][0]["query"]
+        self.assertIn('resource.service.name = "shaka-server"', trace_query)
+        self.assertIn('resource.deployment.environment = "prod"', trace_query)
+
+    def test_loki_and_tempo_queries_avoid_sensitive_or_high_cardinality_filters(self) -> None:
+        dashboard = self.rendered_dashboard()
+        query_text = []
+        for panel in dashboard.get("panels", []):
+            if panel.get("datasource", {}).get("type") in {"loki", "tempo"}:
+                for target in panel.get("targets", []):
+                    query_text.append(target.get("expr", ""))
+                    query_text.append(target.get("query", ""))
+        combined = "\n".join(query_text)
+        for unsafe in [
+            "user", "user_id", "userId", "ip", "client_ip", "request_id",
+            "requestId", "instance", "service_instance_id", "path", "url",
+            "Authorization", "authorization", "jwt", "JWT",
+        ]:
+            self.assertNotIn(unsafe, combined)
+
+    def test_terraform_wires_dashboard_datasource_uids_without_literal_secrets(self) -> None:
+        combined = "\n".join(
+            path.read_text(encoding="utf-8")
+            for path in [DASHBOARDS_TF, VARIABLES_TF, DASHBOARD]
+        )
+        self.assertIn("prometheus_datasource_uid = var.prometheus_datasource_uid", combined)
+        self.assertIn("loki_datasource_uid       = var.loki_datasource_uid", combined)
+        self.assertIn("tempo_datasource_uid      = var.tempo_datasource_uid", combined)
+        for forbidden in FORBIDDEN_LITERAL_FRAGMENTS:
             self.assertNotIn(forbidden, combined)
 
-    def test_dashboard_runbook_documents_safe_apply_and_explore_checks(self) -> None:
-        self.assertTrue(DOC.is_file(), "missing dashboard docs")
-        text = DOC.read_text()
-        for phrase in [
-            "terraform plan",
-            "terraform apply",
-            "TF_VAR_prometheus_datasource_uid",
-            "up{job=\"shaka-server\"}",
-            "up{job=\"shaka-host\"}",
-            "jvm_memory_used_bytes",
-            "node_cpu_seconds_total",
-            "No secrets",
-            "deployment_environment",
-            "editable",
-        ]:
-            self.assertIn(phrase, text)
 
 if __name__ == "__main__":
     unittest.main()

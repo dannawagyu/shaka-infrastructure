@@ -15,6 +15,16 @@ variable "prometheus_datasource_uid" {
   type        = string
 }
 
+variable "loki_datasource_uid" {
+  description = "Grafana datasource UID for the Grafana Cloud Loki datasource used by dashboard log panels. This is a datasource UID, not a token or endpoint."
+  type        = string
+}
+
+variable "tempo_datasource_uid" {
+  description = "Grafana datasource UID for the Grafana Cloud Tempo datasource used by dashboard trace panels. This is a datasource UID, not a token or endpoint."
+  type        = string
+}
+
 variable "notification_contact_point_name" {
   description = "Existing Grafana contact point name used by alert notification_settings. Discord webhook/contact point is managed manually to avoid storing webhook secrets in Terraform state."
   type        = string
