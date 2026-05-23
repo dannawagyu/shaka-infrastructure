@@ -41,10 +41,10 @@ If these fail, do not apply dashboards as a substitute for ingestion debugging. 
 
 `Shaka Prod Overview` includes:
 
-- app scrape status: `up{job="shaka-server",deployment_environment="prod"}`;
-- host scrape status: `up{job="shaka-host",deployment_environment="prod"}`;
-- service label inventory from `up`, filtered by `deployment_environment`;
-- core systemd service state for `shaka-server.service`, `nginx.service`, and `alloy.service`;
+- app scrape status: `up{job="shaka-server",deployment_environment="prod"}`, rendered as `UP`/`DOWN` instead of raw `1`/`0`;
+- host scrape status: `up{job="shaka-host",deployment_environment="prod"}`, rendered as `UP`/`DOWN` instead of raw `1`/`0`;
+- service label inventory from `up`, filtered by `deployment_environment`, rendered as `PRESENT`/`MISSING`;
+- core systemd service state for `shaka-server.service`, `nginx.service`, and `alloy.service`, rendered as `ACTIVE`/`DOWN`;
 - HTTP request and 5xx rates; the 5xx panel renders 0 when there are no error series;
 - `HTTP 401 rate by URI` for route-level only 401 spike triage, with no user IDs, IP addresses, or request IDs;
 - JVM heap and memory panels;

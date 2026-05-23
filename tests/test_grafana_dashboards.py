@@ -75,6 +75,23 @@ class GrafanaDashboardsTest(unittest.TestCase):
         self.assertNotIn('service_instance_id', expression_text)
         self.assertNotIn('instance,', expression_text)
 
+    def test_top_health_panels_render_words_instead_of_raw_one_values(self) -> None:
+        expected_mappings = {
+            'App scrape status': ('UP', 'DOWN'),
+            'Host scrape status': ('UP', 'DOWN'),
+            'Service labels present': ('PRESENT', 'MISSING'),
+            'Core systemd active': ('ACTIVE', 'DOWN'),
+        }
+        for title, (healthy, unhealthy) in expected_mappings.items():
+            panel = self.panel_by_title(title)
+            defaults = panel['fieldConfig']['defaults']
+            mappings = defaults.get('mappings', [])
+            self.assertTrue(mappings, f'{title} should map numeric status values to words')
+            mapping_text = json.dumps(mappings)
+            self.assertIn(healthy, mapping_text)
+            self.assertIn(unhealthy, mapping_text)
+            self.assertEqual(panel['options']['textMode'], 'value')
+
     def test_http_5xx_panel_falls_back_to_zero_when_no_error_series(self) -> None:
         panel = self.panel_by_title('HTTP 5xx rate')
         self.assertEqual(panel['datasource']['uid'], 'prometheus-test-uid')
