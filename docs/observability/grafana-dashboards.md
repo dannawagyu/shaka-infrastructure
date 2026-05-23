@@ -71,9 +71,10 @@ After apply:
 
 1. Open Grafana folder `Shaka Observability`.
 2. Open dashboard `Shaka Prod Overview`.
-3. Confirm app and host scrape stat panels show `1`.
+3. Confirm app and host scrape stat panels show `UP`.
 4. Confirm JVM and host graphs show recent data over the last 15 minutes.
-5. Confirm no panel query uses local-only addresses, secrets, user IDs, or high-cardinality Loki/Tempo labels.
+5. Confirm Loki log panels show either recent entries or `0 / NO LOGS`, and Tempo panels show recent traces after a traced request.
+6. Confirm no panel query uses local-only addresses, secrets, user IDs, or high-cardinality Loki/Tempo labels.
 
 ## Follow-up diagnostics notes
 
