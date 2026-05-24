@@ -11,7 +11,7 @@ Dashboard-as-Code lives under `terraform/observability/grafana/` and reuses the 
 - `grafana_dashboard.shaka_amazon_rds`
 - `dashboards/amazon-rds.json.tftpl`
 
-`Shaka Prod Overview` references existing Grafana Cloud Prometheus/Mimir, Loki, and Tempo datasources by UID. `Shaka Amazon RDS` imports Grafana.com dashboard [11264 Amazon RDS](https://grafana.com/grafana/dashboards/11264-amazon-rds/), references an existing Grafana CloudWatch datasource by UID, and defaults its AWS Region variable from production `AWS_REGION` so panels do not silently query the datasource's default region. These dashboards do not by themselves enable Loki log ingestion, Tempo tracing, alert routing, Discord webhooks, AWS IAM access, CloudWatch datasource credentials, or any production runtime change. Panels are managed as code with Grafana UI editing disabled (`editable = false` in the rendered dashboard JSON) so Terraform remains the source of truth.
+`Shaka Prod Overview` references existing Grafana Cloud Prometheus/Mimir, Loki, and Tempo datasources by UID. `Shaka Amazon RDS` imports Grafana.com dashboard [11264 Amazon RDS](https://grafana.com/grafana/dashboards/11264-amazon-rds/) and references an existing Grafana CloudWatch datasource by UID. These dashboards do not by themselves enable Loki log ingestion, Tempo tracing, alert routing, Discord webhooks, AWS IAM access, CloudWatch datasource credentials, or any production runtime change. Panels are managed as code with Grafana UI editing disabled (`editable = false` in the rendered dashboard JSON) so Terraform remains the source of truth.
 
 ## Required operator inputs
 
@@ -33,18 +33,13 @@ No secrets, tokens, Discord webhooks, remote_write credentials, DB credentials, 
 Before applying the dashboard, confirm the deployed server is still visible in Grafana Explore with the Prometheus datasource:
 
 ```promql
-target_info{service_name="shaka-server"}
-node_cpu_seconds_total{service_name="shaka-host",deployment_environment="prod"}
-node_memory_MemAvailable_bytes{service_name="shaka-host",deployment_environment="prod"}
-node_memory_MemTotal_bytes{service_name="shaka-host",deployment_environment="prod"}
-node_filesystem_avail_bytes{service_name="shaka-host",deployment_environment="prod",mountpoint="/"}
-node_filesystem_size_bytes{service_name="shaka-host",deployment_environment="prod",mountpoint="/"}
-node_systemd_unit_state{service_name="shaka-host",deployment_environment="prod",name=~"shaka-server.service|nginx.service|alloy.service",state="active"}
-jvm_memory_used_bytes{service_name="shaka-server"}
-http_server_request_duration_seconds_count{service_name="shaka-server"}
+count({__name__=~"target_info|jvm_memory_used_bytes|http_server_request_duration_seconds_count",service_name="shaka-server",deployment_environment="prod"})
+count(system_cpu_time_seconds_total{service_name="shaka-host",deployment_environment="prod"})
+sum(rate(http_server_request_duration_seconds_count{service_name="shaka-server",deployment_environment="prod"}[5m]))
+sum(system_memory_usage_bytes{service_name="shaka-host",deployment_environment="prod"})
 ```
 
-The host metric source is the production `prometheus.exporter.unix` Alloy component, which exposes node-exporter metric names (`node_cpu_seconds_total`, `node_memory_*`, `node_filesystem_*`, `node_systemd_unit_state`). The dashboard intentionally does not use `system_*` hostmetrics names or `up` fallbacks; if the `node_*` series are missing, fix Alloy host ingestion or labels instead of broadening dashboard queries. If these fail, do not apply dashboards as a substitute for ingestion debugging. Check production Alloy first: `systemctl status alloy`, Alloy logs, the local Unix exporter scrape path, and OTLP credentials.
+If these fail, do not apply dashboards as a substitute for ingestion debugging. Check production Alloy first: `systemctl status alloy`, Alloy logs, local OTLP listeners, and Grafana Cloud OTLP credentials.
 
 For `Shaka Amazon RDS`, also confirm before any plan/apply that `GRAFANA_CLOUDWATCH_DATASOURCE_UID` points to a Grafana CloudWatch datasource scoped to the intended Shaka production RDS metrics only, and that the `Shaka Observability` folder is restricted to operators allowed to view production RDS infrastructure names and metrics. If the datasource can read unrelated AWS accounts, environments, or services, tighten the datasource/IAM scope before applying the dashboard.
 
@@ -52,16 +47,14 @@ For `Shaka Amazon RDS`, also confirm before any plan/apply that `GRAFANA_CLOUDWA
 
 `Shaka Prod Overview` includes:
 
-- app OTLP heartbeat status: any recent `target_info`, `jvm_memory_used_bytes`, or `http_server_request_duration_seconds_count` series for `service_name="shaka-server",deployment_environment="prod"`, rendered as `UP`/`DOWN` instead of raw `1`/`0`;
-- host OTLP heartbeat status: recent `node_cpu_seconds_total` series from the Alloy Unix exporter for `service_name="shaka-host",deployment_environment="prod"`, rendered as `UP`/`DOWN` instead of raw `1`/`0`;
-- service label inventory from OTLP app and host heartbeat metrics, filtered by `deployment_environment`, rendered as `PRESENT`/`MISSING`;
-- core systemd service state for `shaka-server.service`, `nginx.service`, and `alloy.service`, rendered as `ACTIVE`/`DOWN`;
-
-Status and inventory stat panels intentionally distinguish three states: `1` when the target series exists, `0` when the paired app/host baseline confirms Grafana ingestion is connected but that target series is missing or inactive, and Grafana `No data` when neither side has enough telemetry to prove the connection. They use `or on() (0 * max(<baseline metric>))` rather than unconditional `or vector(0)` for this reason.
-- HTTP request and 5xx rates; the 5xx panel renders 0 when there are no error series;
-- `HTTP 401 rate by URI` for route-level only 401 spike triage, with no user IDs, IP addresses, or request IDs;
-- JVM heap and memory panels;
-- host CPU, memory, and root disk panels, with memory pressure centered on available memory below 10%;
+- app telemetry status from OTLP app metrics (`target_info`, `jvm_memory_used_bytes`, or `http_server_request_duration_seconds_count`) with `service_name="shaka-server"` / `deployment_environment="prod"`, rendered as `UP`/`DOWN`;
+- host telemetry status from OTLP host metrics (`system_cpu_time_seconds_total`) with `service_name="shaka-host"` / `deployment_environment="prod"`, rendered as `UP`/`DOWN`;
+- service label inventory from app/host OTLP metric families, rendered as `PRESENT`/`MISSING`;
+- core systemd service state for `shaka-server.service`, `nginx.service`, and `alloy.service` when systemd metrics are available, rendered as `ACTIVE`/`DOWN`;
+- HTTP request and 5xx rates using OpenTelemetry HTTP metric/label names; the 5xx panel renders 0 when there are no error series;
+- `HTTP 401 rate by URI` for route-template only 401 spike triage, with each color/series labeled as one method + route-template 401 rate and no user IDs, IP addresses, or request IDs;
+- JVM heap and memory panels using OpenTelemetry JVM metric/label names;
+- host CPU, memory, and root disk panels using OpenTelemetry host metric names, with memory pressure centered on available memory below 10%;
 - metric ingestion inventory table.
 
 ## Safe plan/apply workflow
@@ -84,18 +77,17 @@ After apply:
 2. Open dashboard `Shaka Prod Overview`.
 3. Confirm app and host scrape stat panels show `UP`, service inventory shows `PRESENT`, and core systemd services show `ACTIVE`.
 4. Confirm JVM and host graphs show recent data over the last 15 minutes.
-5. Confirm Loki log panels show either recent entries or `0 / NO LOGS`, and Tempo panels show recent traces after a traced request.
-6. Open `Shaka Amazon RDS`, select the intended CloudWatch datasource/region/period, and confirm the RDS CPU, connections, freeable memory, storage, latency, and I/O panels show recent CloudWatch data.
-7. Confirm no panel query uses local-only addresses, secrets, user IDs, or high-cardinality Loki/Tempo labels.
+5. Open `Shaka Amazon RDS`, select the intended CloudWatch datasource/region/period, and confirm the RDS CPU, connections, freeable memory, storage, latency, and I/O panels show recent CloudWatch data.
+6. Confirm no panel query uses local-only addresses, secrets, user IDs, or high-cardinality Loki/Tempo labels.
 
 ## Follow-up diagnostics notes
 
 - The HTTP 5xx panel must render `0` rather than `No data` when no 5xx time series exists, so operators can distinguish zero errors from broken ingestion.
-- `HTTP 401 rate by URI` is route-level only: it groups by Micrometer `method`, `uri`, and `status`. Do not add user IDs, IP addresses, request IDs, raw paths, `instance`, or `service_instance_id` to this panel. Keep `UNKNOWN` route values visible so unmapped auth probes are not hidden; if raw paths ever appear in the `uri` label, fix application instrumentation before sharing screenshots or widening dashboard access.
+- `HTTP 401 rate by URI` is route-template level only: it groups by OpenTelemetry semantic labels `http_request_method`, `http_route`, and `http_response_status_code`. Do not add user IDs, IP addresses, request IDs, raw paths, `instance`, or `service_instance_id` to this panel. Keep `UNKNOWN` route values visible so unmapped auth probes are not hidden; if raw paths ever appear in the route-template label, fix application instrumentation before sharing screenshots or widening dashboard access.
 - `Loki log entries, last 5m` counts app logs only by `service_name` and `deployment_environment`.
 - `Recent application logs` shows a narrow Loki stream query filtered only by `service_name` and `deployment_environment`.
-- `Recent Tempo traces` uses TraceQL filtered only by stable `resource.service.name` and `resource.deployment.environment` attributes.
+- `Recent Tempo traces` uses a table panel with TraceQL filtered only by stable `resource.service.name` and `resource.deployment.environment` attributes. Use a table for recent trace search results; Grafana's traces visualization is for rendering a selected single trace traversal.
 - Do not add user IDs, IP addresses, request IDs, `instance`, `service_instance_id`, raw URL paths, request bodies, Authorization/JWT material, or user-generated content as Loki labels, Tempo resource attributes, legend labels, or dashboard variables.
 - Host memory pressure is treated as available memory below 10% / usage above 90%. The dashboard turns red below 10% available and green at or above 20% available.
 
-`Shaka Amazon RDS` is based on Grafana.com dashboard 11264 and includes CloudWatch `AWS/RDS` panels for instance-level RDS metrics such as CPU utilization, database connections, and freeable memory. The upstream dashboard's `DBClusterIdentifier` panels are intentionally removed for the current Shaka topology because production uses a standard RDS instance rather than an Aurora/RDS cluster; use `DBInstanceIdentifier` panels as the source of truth. Use the dashboard `CloudWatch data source`, `AWS Region`, and `Period [sec]` variables to select the intended Grafana CloudWatch datasource, AWS region, and query period. If panels show no data, first verify the CloudWatch datasource credentials and region/RDS dimension support in Grafana Explore; do not treat an empty dashboard as proof that RDS metrics are unavailable.
+`Shaka Amazon RDS` is based on Grafana.com dashboard 11264 and includes CloudWatch `AWS/RDS` panels for cluster/instance-level RDS metrics such as CPU utilization, database connections, and freeable memory. Use the dashboard `CloudWatch data source`, `AWS Region`, and `Period [sec]` variables to select the intended Grafana CloudWatch datasource, AWS region, and query period. If panels show no data, first verify the CloudWatch datasource credentials and region/RDS dimension support in Grafana Explore; do not treat an empty dashboard as proof that RDS metrics are unavailable.
