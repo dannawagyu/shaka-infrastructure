@@ -42,6 +42,8 @@ node_cpu_seconds_total
 
 If these fail, do not apply dashboards as a substitute for ingestion debugging. Check production Alloy first: `systemctl status alloy`, Alloy logs, local `/actuator/prometheus`, and remote_write credentials.
 
+For `Shaka Amazon RDS`, also confirm before any plan/apply that `GRAFANA_CLOUDWATCH_DATASOURCE_UID` points to a Grafana CloudWatch datasource scoped to the intended Shaka production RDS metrics only, and that the `Shaka Observability` folder is restricted to operators allowed to view production RDS infrastructure names and metrics. If the datasource can read unrelated AWS accounts, environments, or services, tighten the datasource/IAM scope before applying the dashboard.
+
 ## Dashboard panels
 
 `Shaka Prod Overview` includes:
@@ -74,9 +76,10 @@ After apply:
 
 1. Open Grafana folder `Shaka Observability`.
 2. Open dashboard `Shaka Prod Overview`.
-3. Confirm app and host scrape stat panels show `1`.
+3. Confirm app and host scrape stat panels show `UP`, service inventory shows `PRESENT`, and core systemd services show `ACTIVE`.
 4. Confirm JVM and host graphs show recent data over the last 15 minutes.
-5. Confirm no panel query uses local-only addresses, secrets, user IDs, or high-cardinality Loki/Tempo labels.
+5. Open `Shaka Amazon RDS`, select the intended CloudWatch datasource/region/period, and confirm the RDS CPU, connections, freeable memory, storage, latency, and I/O panels show recent CloudWatch data.
+6. Confirm no panel query uses local-only addresses, secrets, user IDs, or high-cardinality Loki/Tempo labels.
 
 ## Follow-up diagnostics notes
 

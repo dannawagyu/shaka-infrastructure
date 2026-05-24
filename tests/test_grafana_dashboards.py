@@ -35,6 +35,12 @@ def render_template(path: Path, replacements: dict[str, str]) -> dict:
     return json.loads(rendered)
 
 
+def iter_panels(panel_or_dashboard: dict):
+    for panel in panel_or_dashboard.get("panels", []):
+        yield panel
+        yield from iter_panels(panel)
+
+
 class GrafanaDashboardRenderingTest(unittest.TestCase):
     def rendered_dashboard(self) -> dict:
         return render_template(
@@ -111,6 +117,7 @@ class GrafanaDashboardRenderingTest(unittest.TestCase):
         self.assertEqual(dashboard["uid"], "shaka-amazon-rds")
         self.assertEqual(dashboard["title"], "Shaka Amazon RDS")
         self.assertFalse(dashboard["editable"])
+        self.assertIsNone(dashboard["iteration"])
 
         variables = {item["name"]: item for item in dashboard["templating"]["list"]}
         self.assertEqual(variables["datasource"]["type"], "datasource")
@@ -120,15 +127,22 @@ class GrafanaDashboardRenderingTest(unittest.TestCase):
         self.assertEqual(variables["period"]["query"], "60,300,3600")
 
         cloudwatch_targets = []
-        for panel in dashboard.get("panels", []):
+        for panel in iter_panels(dashboard):
             cloudwatch_targets.extend(
                 target for target in panel.get("targets", [])
                 if target.get("namespace") == "AWS/RDS"
             )
         self.assertGreaterEqual(len(cloudwatch_targets), 3)
-        self.assertTrue(any(target.get("metricName") == "CPUUtilization" for target in cloudwatch_targets))
-        self.assertTrue(any(target.get("metricName") == "DatabaseConnections" for target in cloudwatch_targets))
-        self.assertTrue(any(target.get("metricName") == "FreeableMemory" for target in cloudwatch_targets))
+        metric_names = {target.get("metricName") for target in cloudwatch_targets}
+        for metric_name in {
+            "CPUUtilization",
+            "DatabaseConnections",
+            "FreeableMemory",
+            "FreeStorageSpace",
+            "ReadLatency",
+            "WriteIOPS",
+        }:
+            self.assertIn(metric_name, metric_names)
 
     def test_terraform_wires_dashboard_datasource_uids_without_literal_secrets(self) -> None:
         combined = "\n".join(
