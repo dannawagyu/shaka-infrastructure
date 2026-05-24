@@ -9,3 +9,11 @@ resource "grafana_dashboard" "shaka_prod_overview" {
   })
   overwrite = true
 }
+
+resource "grafana_dashboard" "shaka_amazon_rds" {
+  folder = grafana_folder.shaka_observability.uid
+  config_json = templatefile("${path.module}/dashboards/amazon-rds.json.tftpl", {
+    cloudwatch_datasource_uid = var.cloudwatch_datasource_uid
+  })
+  overwrite = true
+}
