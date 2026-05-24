@@ -1,6 +1,6 @@
 # Grafana dashboards
 
-This runbook documents the Terraform-managed Shaka production dashboard.
+This runbook documents the Terraform-managed Shaka production dashboards.
 
 ## Scope
 
@@ -8,8 +8,10 @@ Dashboard-as-Code lives under `terraform/observability/grafana/` and reuses the 
 
 - `grafana_dashboard.shaka_prod_overview`
 - `dashboards/shaka-prod-overview.json.tftpl`
+- `grafana_dashboard.shaka_amazon_rds`
+- `dashboards/amazon-rds.json.tftpl`
 
-The dashboard references existing Grafana Cloud Prometheus/Mimir, Loki, and Tempo datasources by UID. It does not by itself enable Loki log ingestion, Tempo tracing, alert routing, Discord webhooks, or any production runtime change. Panels are managed as code with Grafana UI editing disabled (`editable = false` in the rendered dashboard JSON) so Terraform remains the source of truth.
+`Shaka Prod Overview` references existing Grafana Cloud Prometheus/Mimir, Loki, and Tempo datasources by UID. `Shaka Amazon RDS` imports Grafana.com dashboard [11264 Amazon RDS](https://grafana.com/grafana/dashboards/11264-amazon-rds/) and references an existing Grafana CloudWatch datasource by UID. These dashboards do not by themselves enable Loki log ingestion, Tempo tracing, alert routing, Discord webhooks, AWS IAM access, CloudWatch datasource credentials, or any production runtime change. Panels are managed as code with Grafana UI editing disabled (`editable = false` in the rendered dashboard JSON) so Terraform remains the source of truth.
 
 ## Required operator inputs
 
@@ -19,11 +21,12 @@ Provide these from an operator shell or uncommitted secret wrapper:
 export TF_VAR_grafana_cloud_url="https://<stack>.grafana.net"
 export TF_VAR_grafana_auth="<grafana-service-account-token>"
 export TF_VAR_prometheus_datasource_uid="<prometheus-datasource-uid>"
+export TF_VAR_cloudwatch_datasource_uid="<cloudwatch-datasource-uid>"
 export TF_VAR_loki_datasource_uid="<loki-datasource-uid>"
 export TF_VAR_tempo_datasource_uid="<tempo-datasource-uid>"
 ```
 
-No secrets, tokens, Discord webhooks, remote_write credentials, DB credentials, or JWT material belong in dashboard JSON, Terraform files, PR comments, screenshots, or logs.
+No secrets, tokens, Discord webhooks, remote_write credentials, DB credentials, AWS access keys, or JWT material belong in dashboard JSON, Terraform files, PR comments, screenshots, or logs. The CloudWatch datasource should already exist in Grafana Cloud or be created through a separately reviewed operator path with least-privilege AWS CloudWatch permissions for RDS metrics.
 
 ## Pre-apply Explore checks
 
@@ -85,3 +88,5 @@ After apply:
 - `Recent Tempo traces` uses TraceQL filtered only by stable `resource.service.name` and `resource.deployment.environment` attributes.
 - Do not add user IDs, IP addresses, request IDs, `instance`, `service_instance_id`, raw URL paths, request bodies, Authorization/JWT material, or user-generated content as Loki labels, Tempo resource attributes, legend labels, or dashboard variables.
 - Host memory pressure is treated as available memory below 10% / usage above 90%. The dashboard turns red below 10% available and green at or above 20% available.
+
+`Shaka Amazon RDS` is based on Grafana.com dashboard 11264 and includes CloudWatch `AWS/RDS` panels for cluster/instance-level RDS metrics such as CPU utilization, database connections, and freeable memory. Use the dashboard `CloudWatch data source`, `AWS Region`, and `Period [sec]` variables to select the intended Grafana CloudWatch datasource, AWS region, and query period. If panels show no data, first verify the CloudWatch datasource credentials and region/RDS dimension support in Grafana Explore; do not treat an empty dashboard as proof that RDS metrics are unavailable.
