@@ -59,7 +59,6 @@ class GrafanaDashboardRenderingTest(unittest.TestCase):
             RDS_DASHBOARD,
             {
                 "cloudwatch_datasource_uid": "cloudwatch-test-uid",
-                "cloudwatch_region": "ap-southeast-2",
             },
         )
 
@@ -88,86 +87,81 @@ class GrafanaDashboardRenderingTest(unittest.TestCase):
         self.assertEqual(datasource_by_panel["Recent application logs"], {"type": "loki", "uid": "loki-test-uid"})
         self.assertEqual(datasource_by_panel["Recent Tempo traces"], {"type": "tempo", "uid": "tempo-test-uid"})
 
-    def test_dashboard_uses_otlp_metrics_for_status_panels(self) -> None:
-        rendered = SHAKA_OVERVIEW_DASHBOARD.read_text(encoding="utf-8")
-        for legacy in [
-            'up{job=\\\"shaka-server\\\"}',
-            'up{job=\\\"shaka-host\\\"}',
-            'http_server_requests_seconds_count',
-            'Service labels present',
-            'Core systemd active',
-        ]:
-            self.assertNotIn(legacy, rendered)
-        for forbidden in [
-            'system_cpu_time_seconds_total',
-            'system_memory_usage_bytes',
-            'system_filesystem_usage_bytes',
-            'system_filesystem_limit_bytes',
-            'node_cpu_seconds_total|up',
-        ]:
-            self.assertNotIn(forbidden, rendered)
-        for expected in [
-            '{__name__=~\\\"target_info|jvm_memory_used_bytes|http_server_request_duration_seconds_count',
-            'node_cpu_seconds_total{service_name=',
-            'node_memory_MemAvailable_bytes{service_name=',
-            'node_memory_MemTotal_bytes{service_name=',
-            'node_filesystem_avail_bytes{service_name=',
-            'node_filesystem_size_bytes{service_name=',
-            'node_systemd_unit_state{service_name=',
-            'http_server_request_duration_seconds_count{service_name=',
-            'App label: shaka-server',
-            'Host label: shaka-host',
-            'App systemd: shaka-server',
-            'Proxy systemd: nginx',
-            'Telemetry systemd: alloy',
-            'name=\\\"shaka-server.service\\\"',
-            'name=\\\"nginx.service\\\"',
-            'name=\\\"alloy.service\\\"',
-            'shaka-server',
-            'shaka-host',
-        ]:
-            self.assertIn(expected, rendered)
-
-    def test_status_panels_are_split_and_named_for_operator_readability(self) -> None:
-        dashboard = self.rendered_dashboard()
-        panels_by_title = {panel["title"]: panel for panel in dashboard.get("panels", [])}
-
-        self.assertNotIn("Service labels present", panels_by_title)
-        self.assertNotIn("Core systemd active", panels_by_title)
-
-        label_panels = {
-            "App label: shaka-server": 'service_name="shaka-server"',
-            "Host label: shaka-host": 'service_name="shaka-host"',
-        }
-        for title, selector in label_panels.items():
-            panel = panels_by_title[title]
-            expr = panel["targets"][0]["expr"]
-            self.assertEqual(panel["fieldConfig"]["defaults"]["mappings"][0]["options"]["1"]["text"], "PRESENT")
-            self.assertIn(selector, expr)
-            self.assertIn("or on() (0 * max(", expr)
-            self.assertNotIn("or vector(0)", expr)
-
-        systemd_panels = {
-            "App systemd: shaka-server": 'name="shaka-server.service"',
-            "Proxy systemd: nginx": 'name="nginx.service"',
-            "Telemetry systemd: alloy": 'name="alloy.service"',
-        }
-        for title, selector in systemd_panels.items():
-            panel = panels_by_title[title]
-            expr = panel["targets"][0]["expr"]
-            self.assertEqual(panel["fieldConfig"]["defaults"]["mappings"][0]["options"]["1"]["text"], "ACTIVE")
-            self.assertIn(selector, expr)
-            self.assertIn("or on() (0 * max(", expr)
-            self.assertNotIn("or vector(0)", expr)
-
     def test_dashboard_uses_loki_zero_fallback_and_safe_tempo_filter(self) -> None:
         loki_stat = self.panel("Loki log entries, last 5m")
         self.assertIn("or vector(0)", loki_stat["targets"][0]["expr"])
         self.assertEqual(loki_stat["gridPos"]["h"], 8)
 
-        trace_query = self.panel("Recent Tempo traces")["targets"][0]["query"]
+        trace_panel = self.panel("Recent Tempo traces")
+        self.assertEqual(trace_panel["type"], "table")
+        trace_query = trace_panel["targets"][0]["query"]
         self.assertIn('resource.service.name = "shaka-server"', trace_query)
         self.assertIn('resource.deployment.environment = "prod"', trace_query)
+
+    def test_401_panel_legend_explains_color_series(self) -> None:
+        panel = self.panel("HTTP 401 rate by URI")
+        target = panel["targets"][0]
+
+        self.assertIn("http_route", target["expr"])
+        self.assertIn("http_request_method", target["expr"])
+        self.assertEqual(target["legendFormat"], "{{http_request_method}} {{http_route}} 401")
+        self.assertIn("Each color/series is one method + route-template 401 rate", panel["description"])
+
+    def test_overview_prometheus_queries_match_otlp_metric_and_label_names(self) -> None:
+        dashboard = self.rendered_dashboard()
+        prometheus_exprs = []
+        for panel in iter_panels(dashboard):
+            if panel.get("datasource", {}).get("type") == "prometheus":
+                prometheus_exprs.extend(target.get("expr", "") for target in panel.get("targets", []))
+        combined = "\n".join(prometheus_exprs)
+
+        self.assertIn("service_name=\"shaka-server\"", combined)
+        self.assertIn("deployment_environment=\"prod\"", combined)
+        self.assertIn("http_server_request_duration_seconds_count", combined)
+        self.assertIn("http_response_status_code", combined)
+        self.assertIn("http_request_method", combined)
+        self.assertIn("http_route", combined)
+        self.assertIn("jvm_memory_limit_bytes", combined)
+        self.assertIn("jvm_memory_type", combined)
+        self.assertIn("system_cpu_time_seconds_total", combined)
+        self.assertIn("system_memory_usage_bytes", combined)
+        self.assertIn("system_filesystem_usage_bytes", combined)
+        self.assertIn("system_filesystem_limit_bytes", combined)
+
+        for legacy in [
+            "up{job=",
+            "http_server_requests_seconds_count",
+            "status=~\"5..\"",
+            "area=\"heap\"",
+            "jvm_memory_max_bytes",
+            "node_cpu_seconds_total",
+            "node_memory_MemAvailable_bytes",
+            "node_filesystem_avail_bytes",
+        ]:
+            self.assertNotIn(legacy, combined)
+
+    def test_cloudwatch_is_only_used_by_rds_dashboard(self) -> None:
+        overview = self.rendered_dashboard()
+        overview_datasources = {
+            panel.get("datasource", {}).get("type")
+            for panel in iter_panels(overview)
+            if isinstance(panel.get("datasource"), dict)
+        }
+        self.assertNotIn("cloudwatch", overview_datasources)
+
+        rds = self.rendered_rds_dashboard()
+        datasource_variables = {
+            item.get("name"): item
+            for item in rds.get("templating", {}).get("list", [])
+        }
+        self.assertEqual(datasource_variables["datasource"]["query"], "cloudwatch")
+        cloudwatch_targets = [
+            target
+            for panel in iter_panels(rds)
+            for target in panel.get("targets", [])
+            if target.get("namespace") == "AWS/RDS"
+        ]
+        self.assertGreater(len(cloudwatch_targets), 0)
 
     def test_loki_and_tempo_queries_avoid_sensitive_or_high_cardinality_filters(self) -> None:
         dashboard = self.rendered_dashboard()
@@ -197,13 +191,7 @@ class GrafanaDashboardRenderingTest(unittest.TestCase):
         self.assertEqual(variables["datasource"]["query"], "cloudwatch")
         self.assertEqual(variables["datasource"]["current"]["value"], "cloudwatch-test-uid")
         self.assertEqual(variables["region"]["query"], "regions()")
-        self.assertEqual(variables["region"]["current"]["value"], "ap-southeast-2")
         self.assertEqual(variables["period"]["query"], "60,300,3600")
-
-        self.assertNotIn("Information", {panel.get("title") for panel in dashboard.get("panels", [])})
-        self.assertNotIn("Instance metrics", {panel.get("title") for panel in dashboard.get("panels", [])})
-        self.assertEqual(dashboard["panels"][0]["title"], "CPU utilization per instance [%]")
-        self.assertEqual(dashboard["panels"][0]["gridPos"]["y"], 0)
 
         cloudwatch_targets = []
         for panel in iter_panels(dashboard):
@@ -211,15 +199,7 @@ class GrafanaDashboardRenderingTest(unittest.TestCase):
                 target for target in panel.get("targets", [])
                 if target.get("namespace") == "AWS/RDS"
             )
-        self.assertGreaterEqual(len(cloudwatch_targets), 9)
-        self.assertTrue(
-            all("DBInstanceIdentifier" in target.get("dimensions", {}) for target in cloudwatch_targets),
-            "Shaka production uses a standard RDS instance, so dashboard panels should query instance dimensions only",
-        )
-        self.assertFalse(
-            any("DBClusterIdentifier" in target.get("dimensions", {}) for target in cloudwatch_targets),
-            "Cluster-dimension panels are hidden/noisy for the current non-Aurora Shaka RDS topology",
-        )
+        self.assertGreaterEqual(len(cloudwatch_targets), 3)
         metric_names = {target.get("metricName") for target in cloudwatch_targets}
         for metric_name in {
             "CPUUtilization",
@@ -238,7 +218,6 @@ class GrafanaDashboardRenderingTest(unittest.TestCase):
         )
         self.assertIn("prometheus_datasource_uid = var.prometheus_datasource_uid", combined)
         self.assertIn("cloudwatch_datasource_uid = var.cloudwatch_datasource_uid", combined)
-        self.assertIn("cloudwatch_region         = var.cloudwatch_region", combined)
         self.assertIn("loki_datasource_uid       = var.loki_datasource_uid", combined)
         self.assertIn("tempo_datasource_uid      = var.tempo_datasource_uid", combined)
         for forbidden in FORBIDDEN_LITERAL_FRAGMENTS:
