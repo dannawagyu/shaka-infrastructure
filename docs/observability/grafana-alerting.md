@@ -14,11 +14,11 @@ Managed by Terraform under `terraform/observability/grafana/`:
   - app OTLP metrics missing (`target_info{service_name="shaka-server"}` absent);
   - HTTP 5xx via OpenTelemetry HTTP server request duration counters;
   - JVM heap high via OpenTelemetry JVM memory metrics;
-  - root disk warning and critical via Alloy Unix exporter `node_filesystem_avail_bytes` / `node_filesystem_size_bytes` metrics;
-  - memory pressure via Alloy Unix exporter `node_memory_MemAvailable_bytes` / `node_memory_MemTotal_bytes` metrics;
-  - CPU saturation via Alloy Unix exporter `node_cpu_seconds_total` metrics;
-  - supplemental core runtime heartbeat missing via OTLP app heartbeat;
-  - Alloy OTLP pipeline missing (`node_cpu_seconds_total{service_name="shaka-host"}` absent).
+  - root disk warning and critical via OpenTelemetry host filesystem usage/limit metrics;
+  - memory pressure via OpenTelemetry host memory usage metrics;
+  - CPU saturation via OpenTelemetry host CPU time;
+  - supplemental core systemd service down when `node_systemd_unit_state` is available;
+  - Alloy OTLP pipeline missing (`system_cpu_time_seconds_total{service_name="shaka-host"}` absent).
 
 Manual for now:
 
@@ -65,7 +65,7 @@ Only run `terraform apply` after reviewing the plan for unexpected deletions or 
 Production deploy installs `/etc/alloy/config.alloy` from `deploy/grafana/alloy-otlp-config.alloy` and stores Grafana Cloud OTLP credentials in `/etc/alloy/shaka-observability.env` through the deployment/operator secret path. The active metrics path is:
 
 ```text
-OpenTelemetry Java agent + Alloy Unix exporter / Prometheus receiver
+OpenTelemetry Java agent + Alloy hostmetrics receiver
   -> local Alloy OTLP pipeline
   -> Grafana Cloud OTLP endpoint
   -> Grafana Cloud Prometheus/Mimir datasource
@@ -86,6 +86,6 @@ Do not place real OTLP credentials in Terraform variables, committed files, user
 
 ## Label and Free-tier guardrails
 
-Rules assume the active Alloy OTLP config upserts low-cardinality OpenTelemetry resource attributes that Grafana Cloud exposes as Prometheus labels: `service_name`, `deployment_environment`, and `service_instance_id`. Host alerts use the node-exporter metric names emitted by `prometheus.exporter.unix` (`node_cpu_seconds_total`, `node_memory_*`, `node_filesystem_*`) and intentionally avoid hostmetrics `system_*` names, legacy scrape `job` labels, and `/actuator/prometheus` `up` checks. If live label discovery differs, adjust Alloy resource processors and Terraform queries together after verifying labels in Grafana Explore.
+Rules assume the active Alloy OTLP config upserts low-cardinality OpenTelemetry resource attributes that Grafana Cloud exposes as Prometheus labels: `service_name`, `deployment_environment`, and `service_instance_id`. Alert queries intentionally avoid legacy scrape `job` labels and `/actuator/prometheus` `up` checks. If live label discovery differs, adjust Alloy resource processors and Terraform queries together after verifying labels in Grafana Explore.
 
 Do not enable broad Loki log ingestion, traces, request-body capture, user IDs as labels, request IDs as labels, JWT subjects, or URL paths with IDs as labels in this ticket. Grafana Cloud Free compatibility and privacy guardrails remain the default.
