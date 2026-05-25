@@ -34,7 +34,7 @@ class GrafanaPrometheusLokiStackTest(unittest.TestCase):
             "no request bodies",
             "no Authorization/JWT headers",
             "avoid userId",
-            "server-side Alloy/Loki pipeline changes",
+            "infra-owned production deploy path",
             "Closes #3",
         ]:
             self.assertIn(phrase, text)

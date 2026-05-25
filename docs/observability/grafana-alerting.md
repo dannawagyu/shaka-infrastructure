@@ -2,7 +2,7 @@
 
 Closes #2
 
-This scaffold keeps server-local Alloy configuration in `shaka-server-spring`; this repo owns Grafana Cloud alert rule IaC and the operator runbook for the Shaka production alerting stack.
+This scaffold originally covered Grafana Cloud alert rule IaC and the operator runbook. Production runtime ownership now lives in `shaka-infrastructure` as well: app deploy orchestration, server-local Alloy configuration, systemd/Nginx runtime files, and Grafana OTLP publisher credentials are managed from this repo instead of duplicating secrets in `shaka-server-spring`.
 
 ## Terraform scope
 
