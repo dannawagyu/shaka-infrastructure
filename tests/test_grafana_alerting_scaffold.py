@@ -13,14 +13,12 @@ DOC = ROOT / "docs" / "observability" / "grafana-alerting.md"
 
 EXPECTED_ALERT_UIDS = {
     "app_scrape_down",
-    "host_scrape_down",
     "http_5xx",
     "jvm_heap_high",
     "root_disk_warn",
     "root_disk_critical",
     "memory_pressure",
     "cpu_saturation",
-    "core_systemd_service_down",
     "alloy_down",
 }
 
@@ -53,13 +51,21 @@ class GrafanaAlertingScaffoldTest(unittest.TestCase):
         self.assertIn("var.runbook_base_url", tf)
         self.assertIn("intervalMs    = 15000", tf)
         self.assertIn('query     = { params = ["B"] }', tf)
-        for query_part in ["sum by (instance, job) (rate(http_server_requests_seconds_count", "sum by (instance, job) (jvm_memory_used_bytes", "avg by (instance, job) (rate(node_cpu_seconds_total"]:
+        for query_part in [
+            'target_info{service_name=\\"shaka-server\\",deployment_environment=\\"${var.environment}\\"}',
+            'system_cpu_time_seconds{service_name=\\"shaka-host\\",deployment_environment=\\"${var.environment}\\"}',
+            'http_server_request_duration_seconds_count{service_name=\\"shaka-server\\",deployment_environment=\\"${var.environment}\\"',
+            'jvm_memory_used_bytes{service_name=\\"shaka-server\\",deployment_environment=\\"${var.environment}\\",jvm_memory_type=\\"heap\\"}',
+            'system_filesystem_utilization_ratio{service_name=\\"shaka-host\\",deployment_environment=\\"${var.environment}\\"',
+            'system_memory_utilization_ratio{service_name=\\"shaka-host\\",deployment_environment=\\"${var.environment}\\",state=\\"used\\"}',
+        ]:
             self.assertIn(query_part, tf)
-        self.assertIn('up{job=\\"shaka-server\\"}', tf)
-        self.assertIn('up{job=\\"shaka-host\\"}', tf)
-        self.assertIn('(shaka-server|nginx)[.]service', tf)
-        self.assertNotIn('(shaka-server|nginx)\\\\.service', tf)
-        self.assertNotIn('(shaka-server|nginx)\\\\\\\\.service', tf)
+        self.assertIn('absent_over_time(', tf)
+        self.assertIn('or vector(0)', tf)
+        self.assertIn('no_data_state  = "OK"', tf)
+        self.assertNotIn('up{job=\\"shaka-server\\"}', tf)
+        self.assertNotIn('up{job=\\"shaka-host\\"}', tf)
+        self.assertNotIn('node_systemd_unit_state', tf)
         self.assertNotIn('(shaka-server|mysql|nginx)', tf)
         self.assertNotIn('query     = { params = ["C"] }', tf)
         self.assertNotIn("intervalMs    = 1000", tf)
@@ -75,7 +81,9 @@ class GrafanaAlertingScaffoldTest(unittest.TestCase):
         memory_rule = re.search(r'memory_pressure\s+=\s+\{(?P<body>[\s\S]*?)\n\s+\}', tf)
         self.assertIsNotNone(memory_rule, "missing memory_pressure alert rule")
         body = memory_rule.group('body')
-        self.assertIn('node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes', body)
+        self.assertIn('system_memory_utilization_ratio', body)
+        self.assertIn(r'service_name=\"shaka-host\"', body)
+        self.assertIn(r'state=\"used\"', body)
         self.assertIn('> 0.90', body)
         self.assertIn('available memory is below 10%', body)
         self.assertIn('usage above 90%', body)
@@ -96,26 +104,26 @@ class GrafanaAlertingScaffoldTest(unittest.TestCase):
         for phrase in required_phrases:
             self.assertIn(phrase, text, f"docs missing phrase: {phrase}")
 
-    def test_ec2_alloy_labels_and_runtime_secret_validation_match_alerts(self) -> None:
-        self.assertTrue(PROD_USER_DATA.is_file(), f"missing EC2 user_data template: {PROD_USER_DATA}")
-        user_data = PROD_USER_DATA.read_text()
+    def test_otlp_alloy_config_labels_match_alert_queries(self) -> None:
+        alloy = ROOT / "deploy" / "grafana" / "alloy-otlp-config.alloy"
+        self.assertTrue(alloy.is_file(), f"missing OTLP Alloy config: {alloy}")
+        text = alloy.read_text()
         for phrase in [
-            'target_label = "job"',
-            'replacement  = "shaka-host"',
-            'target_label = "service_name"',
-            'target_label = "deployment_environment"',
-            'unit_include = "^(shaka-server|nginx|alloy)[.]service$"',
-            'enable_collectors = ["systemd"]',
-            'ExecStartPre=/usr/local/sbin/validate-alloy-grafana-cloud-env',
-            'owner_group="$(stat -c',
-            '(permissions & 8#077) != 0',
-            'GRAFANA_PROMETHEUS_REMOTE_WRITE_URL',
-            'GRAFANA_PROMETHEUS_REMOTE_WRITE_USER',
-            'GRAFANA_PROMETHEUS_REMOTE_WRITE_TOKEN',
+            'otelcol.receiver.otlp "shaka"',
+            'otelcol.receiver.hostmetrics "shaka_host"',
+            'collection_interval = "30s"',
+            'key    = "service.name"',
+            'value  = sys.env("OTEL_SERVICE_NAME")',
+            'value  = "shaka-host"',
+            'key    = "deployment.environment"',
+            'value  = sys.env("OTEL_DEPLOYMENT_ENVIRONMENT")',
+            'metrics = [otelcol.processor.resource.shaka_host.input]',
+            'metrics = [otelcol.exporter.otlphttp.grafana_cloud.input]',
         ]:
-            self.assertIn(phrase, user_data, f"user_data missing phrase: {phrase}")
-        self.assertNotIn("glc_", user_data)
-        self.assertNotRegex(user_data, r"(?m)^\\s*enabled_collectors\\s*=")
+            self.assertIn(phrase, text, f"OTLP Alloy config missing phrase: {phrase}")
+        self.assertNotIn("GRAFANA_PROMETHEUS_REMOTE_WRITE", text)
+        self.assertNotIn("glc_", text)
+
 
 
 if __name__ == "__main__":
