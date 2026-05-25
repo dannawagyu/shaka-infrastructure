@@ -3,14 +3,17 @@
 from __future__ import annotations
 
 import json
+import re
 import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 GRAFANA_DIR = ROOT / "terraform" / "observability" / "grafana"
-DASHBOARD = GRAFANA_DIR / "dashboards" / "shaka-prod-overview.json.tftpl"
+SHAKA_OVERVIEW_DASHBOARD = GRAFANA_DIR / "dashboards" / "shaka-prod-overview.json.tftpl"
+RDS_DASHBOARD = GRAFANA_DIR / "dashboards" / "amazon-rds.json.tftpl"
 DASHBOARDS_TF = GRAFANA_DIR / "dashboards.tf"
 VARIABLES_TF = GRAFANA_DIR / "variables.tf"
+DOCS = ROOT / "docs" / "observability" / "grafana-dashboards.md"
 
 FORBIDDEN_LITERAL_FRAGMENTS = [
     "discord.com/api/webhooks",
@@ -18,20 +21,46 @@ FORBIDDEN_LITERAL_FRAGMENTS = [
     "eyJrIj",
     "GRAFANA_CLOUD_API_KEY",
     "GRAFANA_PROMETHEUS_REMOTE_WRITE_TOKEN",
+    "aws_access_key_id",
+    "aws_secret_access_key",
+    "AWS_SECRET_ACCESS_KEY",
+    "AWS_ACCESS_KEY_ID",
 ]
+
+
+def render_template(path: Path, replacements: dict[str, str]) -> dict:
+    rendered = path.read_text(encoding="utf-8")
+    for template_var, value in replacements.items():
+        rendered = rendered.replace(f"${{{template_var}}}", value)
+    return json.loads(rendered)
+
+
+def iter_panels(panel_or_dashboard: dict):
+    for panel in panel_or_dashboard.get("panels", []):
+        yield panel
+        yield from iter_panels(panel)
 
 
 class GrafanaDashboardRenderingTest(unittest.TestCase):
     def rendered_dashboard(self) -> dict:
-        rendered = (
-            DASHBOARD.read_text(encoding="utf-8")
-            .replace("${prometheus_datasource_uid}", "prometheus-test-uid")
-            .replace("${loki_datasource_uid}", "loki-test-uid")
-            .replace("${tempo_datasource_uid}", "tempo-test-uid")
-            .replace("${environment_title}", "Prod")
-            .replace("${environment}", "prod")
+        return render_template(
+            SHAKA_OVERVIEW_DASHBOARD,
+            {
+                "prometheus_datasource_uid": "prometheus-test-uid",
+                "loki_datasource_uid": "loki-test-uid",
+                "tempo_datasource_uid": "tempo-test-uid",
+                "environment_title": "Prod",
+                "environment": "prod",
+            },
         )
-        return json.loads(rendered)
+
+    def rendered_rds_dashboard(self) -> dict:
+        return render_template(
+            RDS_DASHBOARD,
+            {
+                "cloudwatch_datasource_uid": "cloudwatch-test-uid",
+            },
+        )
 
     def panel(self, title: str) -> dict:
         for panel in self.rendered_dashboard().get("panels", []):
@@ -83,16 +112,58 @@ class GrafanaDashboardRenderingTest(unittest.TestCase):
         ]:
             self.assertNotIn(unsafe, combined)
 
+    def test_rds_dashboard_template_renders_valid_json_with_cloudwatch_datasource(self) -> None:
+        dashboard = self.rendered_rds_dashboard()
+        self.assertEqual(dashboard["uid"], "shaka-amazon-rds")
+        self.assertEqual(dashboard["title"], "Shaka Amazon RDS")
+        self.assertFalse(dashboard["editable"])
+        self.assertIsNone(dashboard["iteration"])
+
+        variables = {item["name"]: item for item in dashboard["templating"]["list"]}
+        self.assertEqual(variables["datasource"]["type"], "datasource")
+        self.assertEqual(variables["datasource"]["query"], "cloudwatch")
+        self.assertEqual(variables["datasource"]["current"]["value"], "cloudwatch-test-uid")
+        self.assertEqual(variables["region"]["query"], "regions()")
+        self.assertEqual(variables["period"]["query"], "60,300,3600")
+
+        cloudwatch_targets = []
+        for panel in iter_panels(dashboard):
+            cloudwatch_targets.extend(
+                target for target in panel.get("targets", [])
+                if target.get("namespace") == "AWS/RDS"
+            )
+        self.assertGreaterEqual(len(cloudwatch_targets), 3)
+        metric_names = {target.get("metricName") for target in cloudwatch_targets}
+        for metric_name in {
+            "CPUUtilization",
+            "DatabaseConnections",
+            "FreeableMemory",
+            "FreeStorageSpace",
+            "ReadLatency",
+            "WriteIOPS",
+        }:
+            self.assertIn(metric_name, metric_names)
+
     def test_terraform_wires_dashboard_datasource_uids_without_literal_secrets(self) -> None:
         combined = "\n".join(
             path.read_text(encoding="utf-8")
-            for path in [DASHBOARDS_TF, VARIABLES_TF, DASHBOARD]
+            for path in [DASHBOARDS_TF, VARIABLES_TF, SHAKA_OVERVIEW_DASHBOARD, RDS_DASHBOARD, DOCS]
         )
         self.assertIn("prometheus_datasource_uid = var.prometheus_datasource_uid", combined)
+        self.assertIn("cloudwatch_datasource_uid = var.cloudwatch_datasource_uid", combined)
         self.assertIn("loki_datasource_uid       = var.loki_datasource_uid", combined)
         self.assertIn("tempo_datasource_uid      = var.tempo_datasource_uid", combined)
         for forbidden in FORBIDDEN_LITERAL_FRAGMENTS:
             self.assertNotIn(forbidden, combined)
+        self.assertIsNone(re.search(r"\b\d{12}\b", RDS_DASHBOARD.read_text(encoding="utf-8")))
+
+    def test_terraform_registers_rds_dashboard_in_existing_shaka_folder(self) -> None:
+        text = DASHBOARDS_TF.read_text(encoding="utf-8")
+        self.assertIn('resource "grafana_dashboard" "shaka_amazon_rds"', text)
+        resource_block = text.split('resource "grafana_dashboard" "shaka_amazon_rds"', 1)[1]
+        self.assertIn("folder = grafana_folder.shaka_observability.uid", resource_block)
+        self.assertIn('dashboards/amazon-rds.json.tftpl', resource_block)
+        self.assertIn("overwrite = true", resource_block)
 
 
 if __name__ == "__main__":

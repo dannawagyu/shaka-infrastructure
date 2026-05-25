@@ -15,6 +15,11 @@ variable "prometheus_datasource_uid" {
   type        = string
 }
 
+variable "cloudwatch_datasource_uid" {
+  description = "Grafana datasource UID for the Grafana CloudWatch datasource used by the imported Amazon RDS dashboard. This is a datasource UID, not an AWS key, token, or endpoint."
+  type        = string
+}
+
 variable "loki_datasource_uid" {
   description = "Grafana datasource UID for the Grafana Cloud Loki datasource used by dashboard log panels. This is a datasource UID, not a token or endpoint."
   type        = string
