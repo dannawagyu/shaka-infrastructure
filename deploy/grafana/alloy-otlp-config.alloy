@@ -1,0 +1,67 @@
+// Shaka OTLP-first Alloy config owned by shaka-infrastructure.
+// The app sends metrics, logs, and traces to local Alloy over OTLP; Alloy forwards
+// all three signals to Grafana Cloud with one OTLP publisher credential.
+
+otelcol.auth.basic "grafana_cloud_otlp" {
+  username = sys.env("GRAFANA_CLOUD_OTLP_USERNAME")
+  password = sys.env("GRAFANA_CLOUD_OTLP_PASSWORD")
+}
+
+otelcol.receiver.otlp "shaka" {
+  grpc {
+    endpoint = "127.0.0.1:4317"
+  }
+
+  http {
+    endpoint = "127.0.0.1:4318"
+  }
+
+  output {
+    metrics = [otelcol.processor.resource.shaka.input]
+    logs    = [otelcol.processor.resource.shaka.input]
+    traces  = [otelcol.processor.resource.shaka.input]
+  }
+}
+
+otelcol.processor.resource "shaka" {
+  attributes {
+    action = "upsert"
+    key    = "service.name"
+    value  = sys.env("OTEL_SERVICE_NAME")
+  }
+
+  attributes {
+    action = "upsert"
+    key    = "deployment.environment"
+    value  = sys.env("OTEL_DEPLOYMENT_ENVIRONMENT")
+  }
+
+  attributes {
+    action = "upsert"
+    key    = "service.instance.id"
+    value  = sys.env("EC2_INSTANCE_ID")
+  }
+
+  output {
+    metrics = [otelcol.processor.batch.shaka.input]
+    logs    = [otelcol.processor.batch.shaka.input]
+    traces  = [otelcol.processor.batch.shaka.input]
+  }
+}
+
+otelcol.processor.batch "shaka" {
+  timeout = "5s"
+
+  output {
+    metrics = [otelcol.exporter.otlphttp.grafana_cloud.input]
+    logs    = [otelcol.exporter.otlphttp.grafana_cloud.input]
+    traces  = [otelcol.exporter.otlphttp.grafana_cloud.input]
+  }
+}
+
+otelcol.exporter.otlphttp "grafana_cloud" {
+  client {
+    endpoint = sys.env("GRAFANA_CLOUD_OTLP_ENDPOINT")
+    auth     = otelcol.auth.basic.grafana_cloud_otlp.handler
+  }
+}

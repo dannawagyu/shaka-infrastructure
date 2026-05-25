@@ -2,7 +2,7 @@
 
 Closes #3
 
-This document specifies the Shaka Grafana Cloud observability stack split for Prometheus / Metrics and Loki / Logs. It extends the alerting scaffold from issue #2 without moving server-side Alloy ownership out of `shaka-server-spring`.
+This document specifies the Shaka Grafana Cloud observability stack split for Prometheus / Metrics and Loki / Logs. It extends the alerting scaffold from issue #2 and records the updated ownership model: production app deploy, server-local Alloy, and runtime Grafana credentials are infra-owned in `shaka-infrastructure`, while `shaka-server-spring` owns application code and the build artifact contract.
 
 ## Terraform owns
 
@@ -52,7 +52,7 @@ Allowed labels must stay low-cardinality:
 - `source=app` or `source=nginx-error`.
 - avoid userId, requestId, URL paths with IDs, JWT subject, arbitrary exception text, or user-generated content as labels.
 
-Terraform alone cannot ingest logs from EC2. Any server-side Alloy/Loki pipeline changes must be implemented as a separate `shaka-server-spring` follow-up issue and reviewed for privacy/cardinality before enabling `enable_loki_ingestion`.
+Terraform alone cannot ingest logs from EC2. Runtime Alloy pipeline changes are implemented through the infra-owned production deploy path, not a `shaka-server-spring` secret path. Any Loki-specific file tailing pipeline still needs privacy/cardinality review before enabling `enable_loki_ingestion`; the OTLP-first path uses the OpenTelemetry Java agent and local Alloy OTLP receiver managed from this repo.
 
 ## Safe commands
 

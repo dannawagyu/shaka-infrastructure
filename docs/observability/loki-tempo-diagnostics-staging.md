@@ -3,7 +3,7 @@
 Closes #24
 Closes #25
 
-This runbook stages Shaka production log and trace diagnostics decisions without enabling new production export. It keeps the current Prometheus/Grafana metrics path as the only active Grafana ingestion path until Auden separately approves privacy, cost, overhead, and rollback gates.
+This runbook documents the older Loki/Tempo staging guardrails and the privacy/cost gates that still apply to signal-specific file tailing or trace-only experiments. The active production direction is now infra-owned OTLP-first deployment: OpenTelemetry Java agent metrics/logs/traces -> local Alloy OTLP receiver -> Grafana Cloud OTLP endpoint.
 
 ## RFC status and gate
 
@@ -92,7 +92,7 @@ Disable the Java agent and OTLP export without affecting metrics:
 
 ## Follow-up work before enablement
 
-- Add server-side Alloy configuration in `shaka-server-spring` behind explicit enable flags.
-- Add static validation that Loki and Tempo pipelines stay disabled by default.
-- Run security/privacy review before any production enablement.
+- Keep server-side Alloy runtime configuration in `shaka-infrastructure`, not `shaka-server-spring`.
+- Keep static validation for any legacy Loki/Tempo Terraform placeholders that remain disabled by default.
+- Run security/privacy review before enabling any additional file-tail Loki pipeline or increasing trace/log volume.
 - Capture Grafana Explore evidence after a safe synthetic event/trace test.
