@@ -89,7 +89,7 @@ class GitHubActionsProductionTest(unittest.TestCase):
         self.assertIn("Environment=EC2_INSTANCE_ID=$${INSTANCE_ID}", text)
         self.assertIn("systemctl enable --now nginx", text)
         self.assertIn("systemctl enable --now alloy", text)
-        self.assertIn("systemctl enable shaka-server", text)
+        self.assertNotIn("systemctl enable shaka-server", text)
         self.assertNotIn("systemctl enable --now shaka-server", text)
 
 

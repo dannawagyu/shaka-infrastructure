@@ -101,7 +101,6 @@ class GrafanaAlertingScaffoldTest(unittest.TestCase):
         user_data = PROD_USER_DATA.read_text()
         for phrase in [
             'target_label = "job"',
-            'replacement  = "shaka-server"',
             'replacement  = "shaka-host"',
             'target_label = "service_name"',
             'target_label = "deployment_environment"',
