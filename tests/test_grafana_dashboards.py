@@ -59,6 +59,7 @@ class GrafanaDashboardRenderingTest(unittest.TestCase):
             RDS_DASHBOARD,
             {
                 "cloudwatch_datasource_uid": "cloudwatch-test-uid",
+                "cloudwatch_region": "ap-southeast-2",
             },
         )
 
@@ -146,6 +147,7 @@ class GrafanaDashboardRenderingTest(unittest.TestCase):
         self.assertEqual(variables["datasource"]["query"], "cloudwatch")
         self.assertEqual(variables["datasource"]["current"]["value"], "cloudwatch-test-uid")
         self.assertEqual(variables["region"]["query"], "regions()")
+        self.assertEqual(variables["region"]["current"]["value"], "ap-southeast-2")
         self.assertEqual(variables["period"]["query"], "60,300,3600")
 
         cloudwatch_targets = []
@@ -173,6 +175,7 @@ class GrafanaDashboardRenderingTest(unittest.TestCase):
         )
         self.assertIn("prometheus_datasource_uid = var.prometheus_datasource_uid", combined)
         self.assertIn("cloudwatch_datasource_uid = var.cloudwatch_datasource_uid", combined)
+        self.assertIn("cloudwatch_region         = var.cloudwatch_region", combined)
         self.assertIn("loki_datasource_uid       = var.loki_datasource_uid", combined)
         self.assertIn("tempo_datasource_uid      = var.tempo_datasource_uid", combined)
         for forbidden in FORBIDDEN_LITERAL_FRAGMENTS:

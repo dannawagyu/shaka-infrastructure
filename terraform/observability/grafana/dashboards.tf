@@ -14,6 +14,7 @@ resource "grafana_dashboard" "shaka_amazon_rds" {
   folder = grafana_folder.shaka_observability.uid
   config_json = templatefile("${path.module}/dashboards/amazon-rds.json.tftpl", {
     cloudwatch_datasource_uid = var.cloudwatch_datasource_uid
+    cloudwatch_region         = var.cloudwatch_region
   })
   overwrite = true
 }
