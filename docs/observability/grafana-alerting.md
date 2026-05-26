@@ -10,16 +10,15 @@ Managed by Terraform under `terraform/observability/grafana/`:
 
 - Grafana provider configuration.
 - Shaka observability folder.
-- RFC-0010 Prometheus/Mimir alert rules for:
-  - app scrape down;
-  - host scrape down;
-  - HTTP 5xx;
-  - JVM heap high;
-  - root disk warning and critical;
-  - memory pressure;
-  - CPU saturation;
-  - core EC2 systemd service down (`shaka-server`, `nginx`; production MySQL runs on RDS, not systemd);
-  - Alloy down.
+- RFC-0010 Grafana Cloud Prometheus/Mimir alert rules using OTLP-exported metrics and OpenTelemetry resource labels for:
+  - app OTLP metrics missing (`target_info{service_name="shaka-server"}` absent);
+  - HTTP 5xx via OpenTelemetry HTTP server request duration counters;
+  - JVM heap high via OpenTelemetry JVM memory metrics;
+  - root disk warning and critical via OpenTelemetry host filesystem usage/limit metrics;
+  - memory pressure via OpenTelemetry host memory usage metrics;
+  - CPU saturation via OpenTelemetry host CPU time;
+  - supplemental core systemd service down when `node_systemd_unit_state` is available;
+  - Alloy OTLP pipeline missing (`system_cpu_time_seconds_total{service_name="shaka-host"}` absent).
 
 Manual for now:
 
@@ -63,22 +62,30 @@ Only run `terraform apply` after reviewing the plan for unexpected deletions or 
 
 ## Alloy runtime credentials and validation
 
-Production EC2 user data installs Alloy and a local validator for `/etc/alloy/grafana-cloud.env`, but it does not render Grafana Cloud remote_write credentials into Terraform state or EC2 user data. Populate that file only through the deployment/operator secret path:
+Production deploy installs `/etc/alloy/config.alloy` from `deploy/grafana/alloy-otlp-config.alloy` and stores Grafana Cloud OTLP credentials in `/etc/alloy/shaka-observability.env` through the deployment/operator secret path. The active metrics path is:
 
-```bash
-sudo install -o root -g root -m 0600 /dev/stdin /etc/alloy/grafana-cloud.env <<'EOF'
-GRAFANA_PROMETHEUS_REMOTE_WRITE_URL=https://prometheus-prod-xx.grafana.net/api/prom/push
-GRAFANA_PROMETHEUS_REMOTE_WRITE_USER=<grafana-prometheus-user>
-GRAFANA_PROMETHEUS_REMOTE_WRITE_TOKEN=<grafana-cloud-token>
-EOF
-sudo /usr/local/sbin/validate-alloy-grafana-cloud-env
-sudo systemctl restart alloy
+```text
+OpenTelemetry Java agent + Alloy hostmetrics receiver
+  -> local Alloy OTLP pipeline
+  -> Grafana Cloud OTLP endpoint
+  -> Grafana Cloud Prometheus/Mimir datasource
 ```
 
-Do not place real remote_write values in Terraform variables, committed files, user_data, shell history, logs, screenshots, or PR comments. The systemd drop-in runs the validator before Alloy starts so a missing, world-readable, or placeholder credential file fails closed.
+Required runtime values are supplied from GitHub production environment secrets/vars or an equivalent operator secret path, not committed files:
+
+```bash
+GRAFANA_CLOUD_OTLP_ENDPOINT=https://<stack>.grafana.net/otlp
+GRAFANA_CLOUD_OTLP_USERNAME=<grafana-otlp-user>
+GRAFANA_CLOUD_OTLP_PASSWORD=<grafana-otlp-token>
+OTEL_SERVICE_NAME=shaka-server
+OTEL_DEPLOYMENT_ENVIRONMENT=prod
+EC2_INSTANCE_ID=<resolved by deploy script from IMDSv2>
+```
+
+Do not place real OTLP credentials in Terraform variables, committed files, user_data, shell history, logs, screenshots, or PR comments. Keep the old Prometheus remote_write scrape alerts disabled/replaced once OTLP metrics are verified.
 
 ## Label and Free-tier guardrails
 
-Rules assume the EC2 Alloy user_data config supplies low-cardinality labels such as `service_name`, `deployment_environment`, and stable Prometheus `job` names (`shaka-server`, `shaka-host`). Alert queries for scrape health explicitly use those `job` labels. If live label discovery differs, adjust Alloy labels and Terraform queries together after verifying the labels in Grafana Explore.
+Rules assume the active Alloy OTLP config upserts low-cardinality OpenTelemetry resource attributes that Grafana Cloud exposes as Prometheus labels: `service_name`, `deployment_environment`, and `service_instance_id`. Alert queries intentionally avoid legacy scrape `job` labels and `/actuator/prometheus` `up` checks. If live label discovery differs, adjust Alloy resource processors and Terraform queries together after verifying labels in Grafana Explore.
 
 Do not enable broad Loki log ingestion, traces, request-body capture, user IDs as labels, request IDs as labels, JWT subjects, or URL paths with IDs as labels in this ticket. Grafana Cloud Free compatibility and privacy guardrails remain the default.

@@ -56,6 +56,11 @@ class AppProductionDeployTest(unittest.TestCase):
         self.assertIn("/etc/alloy/config.alloy:config.alloy", text)
         self.assertIn("/etc/shaka/env:env", text)
         self.assertIn("ExecStartPre=", text)
+        self.assertIn("missing required Alloy OTLP env keys", text)
+        self.assertIn("placeholder value is not allowed", text)
+        self.assertIn("staged Alloy OTLP env file must not be group/world readable", text)
+        self.assertIn("GRAFANA_CLOUD_OTLP_ENDPOINT must be a Grafana Cloud HTTPS endpoint", text)
+        self.assertIn("sudo install -o root -g root -m 0600", text)
         self.assertIn("external health check failed", text)
         self.assertNotIn("GRAFANA_PROMETHEUS_REMOTE_WRITE_TOKEN", text)
         self.assertNotIn("GRAFANA_CLOUD_LOKI_API_KEY", text)
@@ -76,6 +81,7 @@ class AppProductionDeployTest(unittest.TestCase):
         self.assertIn('password = sys.env("GRAFANA_CLOUD_OTLP_PASSWORD")', text)
         self.assertNotIn("prometheus.remote_write", text)
         self.assertNotIn("loki.write", text)
+        self.assertNotIn("processes {}", text)
 
     def test_runtime_config_lives_in_infra(self):
         self.assertTrue((ROOT / "deploy" / "nginx" / "shaka-server.conf").is_file())

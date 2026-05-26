@@ -23,6 +23,22 @@ otelcol.receiver.otlp "shaka" {
   }
 }
 
+otelcol.receiver.hostmetrics "shaka_host" {
+  collection_interval = "30s"
+
+  cpu {}
+  disk {}
+  filesystem {}
+  load {}
+  memory {}
+  network {}
+  paging {}
+
+  output {
+    metrics = [otelcol.processor.resource.shaka_host.input]
+  }
+}
+
 otelcol.processor.resource "shaka" {
   attributes {
     action = "upsert"
@@ -46,6 +62,30 @@ otelcol.processor.resource "shaka" {
     metrics = [otelcol.processor.batch.shaka.input]
     logs    = [otelcol.processor.batch.shaka.input]
     traces  = [otelcol.processor.batch.shaka.input]
+  }
+}
+
+otelcol.processor.resource "shaka_host" {
+  attributes {
+    action = "upsert"
+    key    = "service.name"
+    value  = "shaka-host"
+  }
+
+  attributes {
+    action = "upsert"
+    key    = "deployment.environment"
+    value  = sys.env("OTEL_DEPLOYMENT_ENVIRONMENT")
+  }
+
+  attributes {
+    action = "upsert"
+    key    = "service.instance.id"
+    value  = sys.env("EC2_INSTANCE_ID")
+  }
+
+  output {
+    metrics = [otelcol.processor.batch.shaka.input]
   }
 }
 
