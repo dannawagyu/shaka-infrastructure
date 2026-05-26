@@ -150,6 +150,11 @@ class GrafanaDashboardRenderingTest(unittest.TestCase):
         self.assertEqual(variables["region"]["current"]["value"], "ap-southeast-2")
         self.assertEqual(variables["period"]["query"], "60,300,3600")
 
+        self.assertNotIn("Information", {panel.get("title") for panel in dashboard.get("panels", [])})
+        self.assertNotIn("Instance metrics", {panel.get("title") for panel in dashboard.get("panels", [])})
+        self.assertEqual(dashboard["panels"][0]["title"], "CPU utilization per instance [%]")
+        self.assertEqual(dashboard["panels"][0]["gridPos"]["y"], 0)
+
         cloudwatch_targets = []
         for panel in iter_panels(dashboard):
             cloudwatch_targets.extend(
