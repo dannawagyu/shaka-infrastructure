@@ -33,11 +33,10 @@ No secrets, tokens, Discord webhooks, remote_write credentials, DB credentials, 
 Before applying the dashboard, confirm the deployed server is still visible in Grafana Explore with the Prometheus datasource:
 
 ```promql
-up
-up{job="shaka-server"}
-up{job="shaka-host"}
-jvm_memory_used_bytes
-node_cpu_seconds_total
+target_info{service_name="shaka-server"}
+system_cpu_time_seconds_total{service_name="shaka-host"}
+jvm_memory_used_bytes{service_name="shaka-server"}
+http_server_request_duration_seconds_count{service_name="shaka-server"}
 ```
 
 If these fail, do not apply dashboards as a substitute for ingestion debugging. Check production Alloy first: `systemctl status alloy`, Alloy logs, local `/actuator/prometheus`, and remote_write credentials.
@@ -48,9 +47,9 @@ For `Shaka Amazon RDS`, also confirm before any plan/apply that `GRAFANA_CLOUDWA
 
 `Shaka Prod Overview` includes:
 
-- app scrape status: `up{job="shaka-server",deployment_environment="prod"}`, rendered as `UP`/`DOWN` instead of raw `1`/`0`;
-- host scrape status: `up{job="shaka-host",deployment_environment="prod"}`, rendered as `UP`/`DOWN` instead of raw `1`/`0`;
-- service label inventory from `up`, filtered by `deployment_environment`, rendered as `PRESENT`/`MISSING`;
+- app OTLP heartbeat status: `target_info{service_name="shaka-server",deployment_environment="prod"}`, rendered as `UP`/`DOWN` instead of raw `1`/`0`;
+- host OTLP heartbeat status: `system_cpu_time_seconds_total{service_name="shaka-host",deployment_environment="prod"}`, rendered as `UP`/`DOWN` instead of raw `1`/`0`;
+- service label inventory from OTLP app and host heartbeat metrics, filtered by `deployment_environment`, rendered as `PRESENT`/`MISSING`;
 - core systemd service state for `shaka-server.service`, `nginx.service`, and `alloy.service`, rendered as `ACTIVE`/`DOWN`;
 - HTTP request and 5xx rates; the 5xx panel renders 0 when there are no error series;
 - `HTTP 401 rate by URI` for route-level only 401 spike triage, with no user IDs, IP addresses, or request IDs;

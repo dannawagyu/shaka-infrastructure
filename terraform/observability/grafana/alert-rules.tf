@@ -53,9 +53,9 @@ resource "grafana_rule_group" "shaka_rfc_0010" {
         summary   = "Host CPU usage is above 90%."
       }
       core_systemd_service_down = {
-        title     = "Shaka core systemd service down"
-        condition = "node_systemd_unit_state{name=~\"(shaka-server|nginx)[.]service\",state=\"active\"} == 0"
-        summary   = "One or more core services are inactive or failed when systemd metrics are available."
+        title     = "Shaka core runtime heartbeat missing"
+        condition = "absent_over_time(target_info{service_name=\"shaka-server\",deployment_environment=\"${var.environment}\"}[10m]) or vector(0)"
+        summary   = "Shaka application runtime heartbeat is missing; verify shaka-server and nginx on the production host."
       }
       alloy_down = {
         title     = "Shaka Alloy OTLP pipeline missing"

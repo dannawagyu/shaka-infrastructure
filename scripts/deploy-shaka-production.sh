@@ -107,7 +107,7 @@ cleanup() {
   if [[ -n "$TEMP_KEY" && -f "$TEMP_KEY" ]]; then rm -f "$TEMP_KEY"; fi
   if [[ -n "$KNOWN_HOSTS_FILE" && -f "$KNOWN_HOSTS_FILE" ]]; then rm -f "$KNOWN_HOSTS_FILE"; fi
   if [[ -n "$OBS_ENV_FILE" && -f "$OBS_ENV_FILE" ]]; then rm -f "$OBS_ENV_FILE"; fi
-  if [[ -n "$REMOTE_STAGING_DIR" ]]; then
+  if [[ -n "${REMOTE_STAGING_DIR:-}" && -n "${SSH[*]:-}" ]]; then
     "${SSH[@]}" "case '$REMOTE_STAGING_DIR' in /tmp/shaka-infra-deploy.*) rm -rf '$REMOTE_STAGING_DIR' ;; esac" >/dev/null 2>&1 || true
   fi
 }
@@ -206,10 +206,11 @@ REMOTE_PREFLIGHT
 REMOTE_STAGING_DIR="$("${SSH[@]}" 'tmpdir="$(mktemp -d /tmp/shaka-infra-deploy.XXXXXX)" && chmod 0700 "$tmpdir" && printf "%s" "$tmpdir"')"
 "${SCP[@]}" "$LOCAL_JAR" "$NGINX_CONF" "$SYSTEMD_CONF" "$ENV_EXAMPLE" "$ALLOY_CONFIG" "$OBS_ENV_FILE" "${SHAKA_PROD_SSH_USER}@${SHAKA_PROD_HOST}:${REMOTE_STAGING_DIR}/"
 
-"${SSH[@]}" bash -s -- "$JAR_FILE" "$REMOTE_STAGING_DIR" <<'REMOTE_DEPLOY'
+"${SSH[@]}" bash -s -- "$JAR_FILE" "$REMOTE_STAGING_DIR" "$(basename "$OBS_ENV_FILE")" <<'REMOTE_DEPLOY'
 set -euo pipefail
 JAR_FILE="$1"
 REMOTE_STAGING_DIR="$2"
+OBS_ENV_BASE="$3"
 REMOTE_DIR="/opt/shaka"
 RELEASES_DIR="${REMOTE_DIR}/releases"
 CURRENT_LINK="${REMOTE_DIR}/current.jar"
@@ -270,8 +271,8 @@ instance_id="unknown"
 if imds_token="$(curl -fsS -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600" 2>/dev/null)"; then
   instance_id="$(curl -fsS -H "X-aws-ec2-metadata-token: $imds_token" http://169.254.169.254/latest/meta-data/instance-id 2>/dev/null || printf unknown)"
 fi
-obs_env_file="$(find "$REMOTE_STAGING_DIR" -maxdepth 1 -type f -name 'tmp.*' | sort | head -1)"
-if [[ -z "$obs_env_file" || ! -f "$obs_env_file" ]]; then
+obs_env_file="${REMOTE_STAGING_DIR}/${OBS_ENV_BASE}"
+if [[ ! -f "$obs_env_file" ]]; then
   echo "ERROR: staged observability env file missing" >&2
   exit 1
 fi
@@ -335,7 +336,6 @@ from pathlib import Path
 path = Path('/etc/shaka/env')
 text = path.read_text(encoding='utf-8') if path.exists() else ''
 keys = {
-    'JAVA_TOOL_OPTIONS': '-javaagent:/opt/shaka/opentelemetry-javaagent.jar',
     'OTEL_SERVICE_NAME': 'shaka-server',
     'OTEL_RESOURCE_ATTRIBUTES': 'deployment.environment=prod,service.namespace=shaka',
     'OTEL_TRACES_EXPORTER': 'otlp',
@@ -347,14 +347,23 @@ keys = {
     'OTEL_TRACES_SAMPLER_ARG': '0.01',
 }
 lines = []
+existing_java_tool_options = ''
 for line in text.splitlines():
     stripped = line.strip()
     if not stripped or stripped.startswith('#'):
         lines.append(line)
         continue
-    name = stripped.split('=', 1)[0].strip()
-    if name not in keys:
+    name, _, value = stripped.partition('=')
+    name = name.strip()
+    if name == 'JAVA_TOOL_OPTIONS':
+        existing_java_tool_options = value.strip().strip('"').strip("'")
+    elif name not in keys:
         lines.append(line)
+agent_option = '-javaagent:/opt/shaka/opentelemetry-javaagent.jar'
+if agent_option not in existing_java_tool_options:
+    keys['JAVA_TOOL_OPTIONS'] = f'{existing_java_tool_options} {agent_option}'.strip()
+else:
+    keys['JAVA_TOOL_OPTIONS'] = existing_java_tool_options
 for key, value in keys.items():
     lines.append(f'{key}={value}')
 path.write_text('\n'.join(lines) + '\n', encoding='utf-8')
