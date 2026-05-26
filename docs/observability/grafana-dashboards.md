@@ -11,7 +11,7 @@ Dashboard-as-Code lives under `terraform/observability/grafana/` and reuses the 
 - `grafana_dashboard.shaka_amazon_rds`
 - `dashboards/amazon-rds.json.tftpl`
 
-`Shaka Prod Overview` references existing Grafana Cloud Prometheus/Mimir, Loki, and Tempo datasources by UID. `Shaka Amazon RDS` imports Grafana.com dashboard [11264 Amazon RDS](https://grafana.com/grafana/dashboards/11264-amazon-rds/) and references an existing Grafana CloudWatch datasource by UID. These dashboards do not by themselves enable Loki log ingestion, Tempo tracing, alert routing, Discord webhooks, AWS IAM access, CloudWatch datasource credentials, or any production runtime change. Panels are managed as code with Grafana UI editing disabled (`editable = false` in the rendered dashboard JSON) so Terraform remains the source of truth.
+`Shaka Prod Overview` references existing Grafana Cloud Prometheus/Mimir, Loki, and Tempo datasources by UID. `Shaka Amazon RDS` imports Grafana.com dashboard [11264 Amazon RDS](https://grafana.com/grafana/dashboards/11264-amazon-rds/), references an existing Grafana CloudWatch datasource by UID, and defaults its AWS Region variable from production `AWS_REGION` so panels do not silently query the datasource's default region. These dashboards do not by themselves enable Loki log ingestion, Tempo tracing, alert routing, Discord webhooks, AWS IAM access, CloudWatch datasource credentials, or any production runtime change. Panels are managed as code with Grafana UI editing disabled (`editable = false` in the rendered dashboard JSON) so Terraform remains the source of truth.
 
 ## Required operator inputs
 
