@@ -19,6 +19,7 @@ EXPECTED_ALERT_UIDS = {
     "root_disk_critical",
     "memory_pressure",
     "cpu_saturation",
+    "core_systemd_service_down",
     "alloy_down",
 }
 
@@ -53,11 +54,12 @@ class GrafanaAlertingScaffoldTest(unittest.TestCase):
         self.assertIn('query     = { params = ["B"] }', tf)
         for query_part in [
             'target_info{service_name=\\"shaka-server\\",deployment_environment=\\"${var.environment}\\"}',
-            'system_cpu_time_seconds{service_name=\\"shaka-host\\",deployment_environment=\\"${var.environment}\\"}',
+            'system_cpu_time_seconds_total{service_name=\\"shaka-host\\",deployment_environment=\\"${var.environment}\\"}',
             'http_server_request_duration_seconds_count{service_name=\\"shaka-server\\",deployment_environment=\\"${var.environment}\\"',
             'jvm_memory_used_bytes{service_name=\\"shaka-server\\",deployment_environment=\\"${var.environment}\\",jvm_memory_type=\\"heap\\"}',
-            'system_filesystem_utilization_ratio{service_name=\\"shaka-host\\",deployment_environment=\\"${var.environment}\\"',
-            'system_memory_utilization_ratio{service_name=\\"shaka-host\\",deployment_environment=\\"${var.environment}\\",state=\\"used\\"}',
+            'system_filesystem_usage_bytes{service_name=\\"shaka-host\\",deployment_environment=\\"${var.environment}\\"',
+            'system_memory_usage_bytes{service_name=\\"shaka-host\\",deployment_environment=\\"${var.environment}\\",state=\\"used\\"}',
+            'sum by (service_instance_id)',
         ]:
             self.assertIn(query_part, tf)
         self.assertIn('absent_over_time(', tf)
@@ -65,7 +67,8 @@ class GrafanaAlertingScaffoldTest(unittest.TestCase):
         self.assertIn('no_data_state  = "OK"', tf)
         self.assertNotIn('up{job=\\"shaka-server\\"}', tf)
         self.assertNotIn('up{job=\\"shaka-host\\"}', tf)
-        self.assertNotIn('node_systemd_unit_state', tf)
+        self.assertIn('node_systemd_unit_state', tf)
+        self.assertIn('(shaka-server|nginx)[.]service', tf)
         self.assertNotIn('(shaka-server|mysql|nginx)', tf)
         self.assertNotIn('query     = { params = ["C"] }', tf)
         self.assertNotIn("intervalMs    = 1000", tf)
@@ -81,7 +84,7 @@ class GrafanaAlertingScaffoldTest(unittest.TestCase):
         memory_rule = re.search(r'memory_pressure\s+=\s+\{(?P<body>[\s\S]*?)\n\s+\}', tf)
         self.assertIsNotNone(memory_rule, "missing memory_pressure alert rule")
         body = memory_rule.group('body')
-        self.assertIn('system_memory_utilization_ratio', body)
+        self.assertIn('system_memory_usage_bytes', body)
         self.assertIn(r'service_name=\"shaka-host\"', body)
         self.assertIn(r'state=\"used\"', body)
         self.assertIn('> 0.90', body)

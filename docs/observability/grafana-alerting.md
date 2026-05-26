@@ -14,10 +14,11 @@ Managed by Terraform under `terraform/observability/grafana/`:
   - app OTLP metrics missing (`target_info{service_name="shaka-server"}` absent);
   - HTTP 5xx via OpenTelemetry HTTP server request duration counters;
   - JVM heap high via OpenTelemetry JVM memory metrics;
-  - root disk warning and critical via OpenTelemetry host filesystem utilization;
-  - memory pressure via OpenTelemetry host memory utilization;
+  - root disk warning and critical via OpenTelemetry host filesystem usage/limit metrics;
+  - memory pressure via OpenTelemetry host memory usage metrics;
   - CPU saturation via OpenTelemetry host CPU time;
-  - Alloy OTLP pipeline missing (`system_cpu_time_seconds{service_name="shaka-host"}` absent).
+  - supplemental core systemd service down when `node_systemd_unit_state` is available;
+  - Alloy OTLP pipeline missing (`system_cpu_time_seconds_total{service_name="shaka-host"}` absent).
 
 Manual for now:
 
