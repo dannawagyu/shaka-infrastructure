@@ -99,7 +99,7 @@ class GrafanaDashboardRenderingTest(unittest.TestCase):
         ]:
             self.assertNotIn(legacy, rendered)
         for expected in [
-            'target_info{service_name=',
+            '{__name__=~\\\"target_info|jvm_memory_used_bytes|http_server_request_duration_seconds_count',
             'system_cpu_time_seconds_total{service_name=',
             'http_server_request_duration_seconds_count{service_name=',
             'system_memory_usage_bytes{service_name=',

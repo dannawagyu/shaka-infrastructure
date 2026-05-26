@@ -47,7 +47,7 @@ For `Shaka Amazon RDS`, also confirm before any plan/apply that `GRAFANA_CLOUDWA
 
 `Shaka Prod Overview` includes:
 
-- app OTLP heartbeat status: `target_info{service_name="shaka-server",deployment_environment="prod"}`, rendered as `UP`/`DOWN` instead of raw `1`/`0`;
+- app OTLP heartbeat status: any recent `target_info`, `jvm_memory_used_bytes`, or `http_server_request_duration_seconds_count` series for `service_name="shaka-server",deployment_environment="prod"`, rendered as `UP`/`DOWN` instead of raw `1`/`0`;
 - host OTLP heartbeat status: `system_cpu_time_seconds_total{service_name="shaka-host",deployment_environment="prod"}`, rendered as `UP`/`DOWN` instead of raw `1`/`0`;
 - service label inventory from OTLP app and host heartbeat metrics, filtered by `deployment_environment`, rendered as `PRESENT`/`MISSING`;
 - core systemd service state for `shaka-server.service`, `nginx.service`, and `alloy.service`, rendered as `ACTIVE`/`DOWN`;
