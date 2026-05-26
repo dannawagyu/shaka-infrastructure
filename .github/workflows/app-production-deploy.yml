@@ -1,0 +1,196 @@
+name: Shaka Production App Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      server_ref:
+        description: "Trusted shaka-server-spring release tag or full commit SHA to build"
+        required: true
+        type: string
+      release_version:
+        description: "Expected release version. Empty = read from server build.gradle"
+        required: false
+        type: string
+      deploy_confirmation:
+        description: "Required: deploy-shaka-production"
+        required: true
+        type: string
+      otel_java_agent_version:
+        description: "OpenTelemetry Java agent version to install when OTLP is enabled"
+        required: false
+        default: "2.15.0"
+        type: string
+      otel_java_agent_sha256:
+        description: "Expected SHA-256 for the OpenTelemetry Java agent jar"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: shaka-production-app-deploy
+  cancel-in-progress: false
+
+jobs:
+  build-server-artifact:
+    name: Build Shaka server artifact without production secrets
+    if: github.ref_name == 'main'
+    runs-on: ubuntu-latest
+    outputs:
+      release_version: ${{ steps.version.outputs.release_version }}
+    steps:
+      - name: Validate trusted server ref
+        shell: bash
+        run: |
+          set -euo pipefail
+          ref="${{ inputs.server_ref }}"
+          case "$ref" in
+            server-v*|refs/tags/server-v*|release/server-v*|refs/tags/release/server-v*) ;;
+            *)
+              if [[ ! "$ref" =~ ^[0-9a-f]{40}$ ]]; then
+                echo "server_ref must be a server-v*/release/server-v* tag or a full 40-character commit SHA" >&2
+                exit 1
+              fi
+              ;;
+          esac
+
+      - name: Check out server repository
+        uses: actions/checkout@v4
+        with:
+          repository: dannawagyu/shaka-server-spring
+          ref: ${{ inputs.server_ref }}
+          path: server
+          token: ${{ secrets.SHAKA_SERVER_REPO_TOKEN || github.token }}
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Build and verify server artifact
+        id: version
+        shell: bash
+        working-directory: server
+        env:
+          REQUESTED_RELEASE_VERSION: ${{ inputs.release_version }}
+        run: |
+          set -euo pipefail
+          ./gradlew test --no-daemon
+          ./gradlew clean bootJar --no-daemon
+          version="$(python3 - <<'PY'
+          import re
+          from pathlib import Path
+          text = Path('build.gradle').read_text(encoding='utf-8')
+          match = re.search(r"(?m)^version\s*=\s*['\"]([^'\"]+)['\"]", text)
+          if not match:
+              raise SystemExit('Could not read Gradle version')
+          print(match.group(1))
+          PY
+          )"
+          if [[ -n "$REQUESTED_RELEASE_VERSION" && "$REQUESTED_RELEASE_VERSION" != "$version" ]]; then
+            echo "release_version=$REQUESTED_RELEASE_VERSION does not match build.gradle version=$version" >&2
+            exit 1
+          fi
+          if [[ "$version" == *SNAPSHOT* ]]; then
+            echo "Refusing to deploy SNAPSHOT version: $version" >&2
+            exit 1
+          fi
+          built_jar="$(find build/libs -maxdepth 1 -name '*.jar' ! -name '*plain.jar' | sort | head -1)"
+          if [[ -z "$built_jar" || ! -f "$built_jar" ]]; then
+            echo "Boot jar not found under server/build/libs" >&2
+            exit 1
+          fi
+          mkdir -p ../artifact
+          cp "$built_jar" "../artifact/shaka-${version}.jar"
+          printf '%s\n' "$version" > ../artifact/release-version.txt
+          echo "release_version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Upload verified server artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: shaka-server-production-artifact
+          path: artifact/
+          if-no-files-found: error
+          retention-days: 1
+
+  deploy:
+    name: Deploy Shaka app from verified artifact
+    needs: build-server-artifact
+    if: github.ref_name == 'main'
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      SHAKA_PROD_HOST: ${{ secrets.SHAKA_PROD_HOST }}
+      SHAKA_PROD_SSH_USER: ${{ secrets.SHAKA_PROD_SSH_USER || 'ubuntu' }}
+      SHAKA_PROD_SSH_KEY: ${{ secrets.SHAKA_PROD_SSH_KEY }}
+      SHAKA_PROD_SSH_KNOWN_HOSTS: ${{ secrets.SHAKA_PROD_SSH_KNOWN_HOSTS }}
+      SHAKA_PROD_URL: ${{ secrets.SHAKA_PROD_URL }}
+      GRAFANA_CLOUD_OTLP_ENDPOINT: ${{ secrets.GRAFANA_CLOUD_OTLP_ENDPOINT }}
+      GRAFANA_CLOUD_OTLP_USERNAME: ${{ secrets.GRAFANA_CLOUD_OTLP_USERNAME }}
+      GRAFANA_CLOUD_OTLP_PASSWORD: ${{ secrets.GRAFANA_CLOUD_OTLP_PASSWORD }}
+      OTEL_SERVICE_NAME: ${{ vars.OTEL_SERVICE_NAME || 'shaka-server' }}
+      OTEL_DEPLOYMENT_ENVIRONMENT: ${{ vars.OTEL_DEPLOYMENT_ENVIRONMENT || 'prod' }}
+      OTEL_JAVA_AGENT_VERSION: ${{ inputs.otel_java_agent_version }}
+      OTEL_JAVA_AGENT_SHA256: ${{ inputs.otel_java_agent_sha256 }}
+      RELEASE_VERSION: ${{ needs.build-server-artifact.outputs.release_version }}
+    steps:
+      - name: Validate production deploy confirmation and inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${{ inputs.deploy_confirmation }}" != "deploy-shaka-production" ]]; then
+            echo "Production app deploy requires deploy_confirmation=deploy-shaka-production" >&2
+            exit 1
+          fi
+          missing=()
+          for name in SHAKA_PROD_HOST SHAKA_PROD_SSH_KEY SHAKA_PROD_SSH_KNOWN_HOSTS SHAKA_PROD_URL GRAFANA_CLOUD_OTLP_ENDPOINT GRAFANA_CLOUD_OTLP_USERNAME GRAFANA_CLOUD_OTLP_PASSWORD RELEASE_VERSION OTEL_JAVA_AGENT_SHA256; do
+            if [[ -z "${!name:-}" ]]; then
+              missing+=("$name")
+            fi
+          done
+          if (( ${#missing[@]} > 0 )); then
+            printf 'Missing required production environment values: %s\n' "${missing[*]}" >&2
+            exit 1
+          fi
+          case "$GRAFANA_CLOUD_OTLP_ENDPOINT" in
+            https://*.grafana.net*|https://*.grafana.com*) ;;
+            *) echo "GRAFANA_CLOUD_OTLP_ENDPOINT must be a Grafana Cloud HTTPS endpoint" >&2; exit 1 ;;
+          esac
+          if [[ "$OTEL_JAVA_AGENT_VERSION" == *SNAPSHOT* || ! "$OTEL_JAVA_AGENT_VERSION" =~ ^[0-9]+[.][0-9]+[.][0-9]+$ ]]; then
+            echo "otel_java_agent_version must be a released semver such as 2.15.0" >&2
+            exit 1
+          fi
+          if [[ ! "$OTEL_JAVA_AGENT_SHA256" =~ ^[0-9a-fA-F]{64}$ ]]; then
+            echo "otel_java_agent_sha256 must be a 64-character SHA-256 hex digest" >&2
+            exit 1
+          fi
+
+      - name: Check out infrastructure repository
+        uses: actions/checkout@v4
+        with:
+          path: infra
+
+      - name: Download verified server artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: shaka-server-production-artifact
+          path: server-artifact
+
+      - name: Stage server artifact for infra deploy script
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p server/build/libs
+          cp "server-artifact/shaka-${RELEASE_VERSION}.jar" "server/build/libs/shaka-${RELEASE_VERSION}.jar"
+          test "$(cat server-artifact/release-version.txt)" = "$RELEASE_VERSION"
+
+      - name: Deploy server artifact and OTLP runtime through infra
+        shell: bash
+        run: |
+          set -euo pipefail
+          infra/scripts/deploy-shaka-production.sh
+        env:
+          SHAKA_SERVER_DIR: ${{ github.workspace }}/server
+          SHAKA_INFRA_DIR: ${{ github.workspace }}/infra

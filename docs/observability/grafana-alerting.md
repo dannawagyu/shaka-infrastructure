@@ -17,7 +17,7 @@ Managed by Terraform under `terraform/observability/grafana/`:
   - root disk warning and critical via OpenTelemetry host filesystem usage/limit metrics;
   - memory pressure via OpenTelemetry host memory usage metrics;
   - CPU saturation via OpenTelemetry host CPU time;
-  - supplemental core systemd service down when `node_systemd_unit_state` is available;
+  - supplemental core runtime heartbeat missing via OTLP app heartbeat;
   - Alloy OTLP pipeline missing (`system_cpu_time_seconds_total{service_name="shaka-host"}` absent).
 
 Manual for now:

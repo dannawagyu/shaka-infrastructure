@@ -87,6 +87,28 @@ class GrafanaDashboardRenderingTest(unittest.TestCase):
         self.assertEqual(datasource_by_panel["Recent application logs"], {"type": "loki", "uid": "loki-test-uid"})
         self.assertEqual(datasource_by_panel["Recent Tempo traces"], {"type": "tempo", "uid": "tempo-test-uid"})
 
+    def test_dashboard_uses_otlp_metrics_for_status_panels(self) -> None:
+        rendered = SHAKA_OVERVIEW_DASHBOARD.read_text(encoding="utf-8")
+        for legacy in [
+            'up{job=\\\"shaka-server\\\"}',
+            'up{job=\\\"shaka-host\\\"}',
+            'http_server_requests_seconds_count',
+            'node_cpu_seconds_total',
+            'node_memory_MemAvailable_bytes',
+            'node_filesystem_avail_bytes',
+        ]:
+            self.assertNotIn(legacy, rendered)
+        for expected in [
+            'target_info{service_name=',
+            'system_cpu_time_seconds_total{service_name=',
+            'http_server_request_duration_seconds_count{service_name=',
+            'system_memory_usage_bytes{service_name=',
+            'system_filesystem_usage_bytes{service_name=',
+            'shaka-server',
+            'shaka-host',
+        ]:
+            self.assertIn(expected, rendered)
+
     def test_dashboard_uses_loki_zero_fallback_and_safe_tempo_filter(self) -> None:
         loki_stat = self.panel("Loki log entries, last 5m")
         self.assertIn("or vector(0)", loki_stat["targets"][0]["expr"])

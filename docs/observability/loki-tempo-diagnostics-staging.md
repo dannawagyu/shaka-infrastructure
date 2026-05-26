@@ -45,7 +45,7 @@ Disable the Loki pipeline without changing Prometheus remote_write:
 
 1. Set the Alloy Loki enable flag to false or remove the Loki pipeline block.
 2. Restart Alloy.
-3. Confirm metrics still ingest with `up{job="shaka-server"}`, `up{job="shaka-host"}`, and JVM metrics in Grafana Explore.
+3. Confirm metrics still ingest with `target_info{service_name="shaka-server"}`, `system_cpu_time_seconds_total{service_name="shaka-host"}`, and JVM metrics in Grafana Explore.
 4. Rotate the Grafana Cloud Logs token if any unsafe payload or credential exposure is suspected.
 
 ## Tempo evaluation plan

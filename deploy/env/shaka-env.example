@@ -1,0 +1,18 @@
+# /etc/shaka/env - Environment variables for Shaka Server
+# Copy this file to /etc/shaka/env and fill in actual values
+# chmod 600 /etc/shaka/env
+
+# Database (MySQL)
+DB_URL=jdbc:mysql://localhost:3306/shaka?useSSL=false&serverTimezone=Asia/Seoul&characterEncoding=UTF-8
+DB_USERNAME=shaka
+DB_PASSWORD=<your-password>
+
+# JWT
+JWT_SECRET=<minimum-32-char-secret-key>
+
+# Spring Profile
+SPRING_PROFILES_ACTIVE=prod
+
+# Sentry (https://sentry.io)
+SENTRY_DSN=<your-sentry-dsn>
+SENTRY_AUTH_TOKEN=<your-sentry-auth-token>
