@@ -156,7 +156,15 @@ class GrafanaDashboardRenderingTest(unittest.TestCase):
                 target for target in panel.get("targets", [])
                 if target.get("namespace") == "AWS/RDS"
             )
-        self.assertGreaterEqual(len(cloudwatch_targets), 3)
+        self.assertGreaterEqual(len(cloudwatch_targets), 9)
+        self.assertTrue(
+            all("DBInstanceIdentifier" in target.get("dimensions", {}) for target in cloudwatch_targets),
+            "Shaka production uses a standard RDS instance, so dashboard panels should query instance dimensions only",
+        )
+        self.assertFalse(
+            any("DBClusterIdentifier" in target.get("dimensions", {}) for target in cloudwatch_targets),
+            "Cluster-dimension panels are hidden/noisy for the current non-Aurora Shaka RDS topology",
+        )
         metric_names = {target.get("metricName") for target in cloudwatch_targets}
         for metric_name in {
             "CPUUtilization",
