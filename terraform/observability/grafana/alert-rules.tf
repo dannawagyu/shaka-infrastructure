@@ -18,9 +18,9 @@ resource "grafana_rule_group" "shaka_rfc_0010" {
   dynamic "rule" {
     for_each = {
       app_scrape_down = {
-        title     = "Shaka app OTLP metrics missing"
-        condition = "absent_over_time(target_info{service_name=\"shaka-server\",deployment_environment=\"${var.environment}\"}[10m]) or vector(0)"
-        summary   = "OpenTelemetry app metrics from shaka-server are missing. Check the app, Java agent, and local Alloy OTLP receiver/exporter."
+        title     = "Shaka app OTLP heartbeat missing"
+        condition = "absent_over_time({__name__=~\"target_info|jvm_memory_used_bytes|http_server_request_duration_seconds_count\",service_name=\"shaka-server\",deployment_environment=\"${var.environment}\"}[10m]) or vector(0)"
+        summary   = "Spring Boot OTLP metrics heartbeat is missing."
       }
       http_5xx = {
         title     = "Shaka HTTP 5xx rate high"
@@ -54,7 +54,7 @@ resource "grafana_rule_group" "shaka_rfc_0010" {
       }
       core_systemd_service_down = {
         title     = "Shaka core runtime heartbeat missing"
-        condition = "absent_over_time(target_info{service_name=\"shaka-server\",deployment_environment=\"${var.environment}\"}[10m]) or vector(0)"
+        condition = "absent_over_time({__name__=~\"target_info|jvm_memory_used_bytes|http_server_request_duration_seconds_count\",service_name=\"shaka-server\",deployment_environment=\"${var.environment}\"}[10m]) or vector(0)"
         summary   = "Shaka application runtime heartbeat is missing; verify shaka-server and nginx on the production host."
       }
       alloy_down = {

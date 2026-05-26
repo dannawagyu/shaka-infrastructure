@@ -42,7 +42,7 @@
             "uid": "${prometheus_datasource_uid}"
           },
           "editorMode": "code",
-          "expr": "min(target_info{service_name=\"shaka-server\",deployment_environment=\"${environment}\"})",
+          "expr": "clamp_max(count({__name__=~\"target_info|jvm_memory_used_bytes|http_server_request_duration_seconds_count\",service_name=\"shaka-server\",deployment_environment=\"${environment}\"}), 1) or vector(0)",
           "instant": false,
           "range": true,
           "refId": "A"
@@ -121,7 +121,7 @@
             "uid": "${prometheus_datasource_uid}"
           },
           "editorMode": "code",
-          "expr": "clamp_max(count(count by (service_instance_id) (system_cpu_time_seconds_total{service_name=\"shaka-host\",deployment_environment=\"${environment}\"})), 1)",
+          "expr": "clamp_max(count(system_cpu_time_seconds_total{service_name=\"shaka-host\",deployment_environment=\"${environment}\"}), 1) or vector(0)",
           "instant": false,
           "range": true,
           "refId": "A"
@@ -200,7 +200,7 @@
             "uid": "${prometheus_datasource_uid}"
           },
           "editorMode": "code",
-          "expr": "count by (service_name, deployment_environment) ({__name__=~\"target_info|system_cpu_time_seconds_total\",service_name=~\"shaka-server|shaka-host\",deployment_environment=\"${environment}\"})",
+          "expr": "count by (service_name, deployment_environment) ({__name__=~\"target_info|jvm_memory_used_bytes|http_server_request_duration_seconds_count|system_cpu_time_seconds_total\",service_name=~\"shaka-server|shaka-host\",deployment_environment=\"${environment}\"}) or (label_replace(label_replace(vector(0), \"service_name\", \"shaka-server\", \"__name__\", \".*\"), \"deployment_environment\", \"${environment}\", \"__name__\", \".*\") or label_replace(label_replace(vector(0), \"service_name\", \"shaka-host\", \"__name__\", \".*\"), \"deployment_environment\", \"${environment}\", \"__name__\", \".*\"))",
           "instant": false,
           "range": true,
           "refId": "A",
@@ -280,7 +280,7 @@
             "uid": "${prometheus_datasource_uid}"
           },
           "editorMode": "code",
-          "expr": "(target_info{service_name=\"shaka-server\",deployment_environment=\"${environment}\"} or label_replace(clamp_max(count(count by (service_instance_id) (system_cpu_time_seconds_total{service_name=\"shaka-host\",deployment_environment=\"${environment}\"})), 1), \"name\", \"alloy.service\", \"__name__\", \".*\"))",
+          "expr": "(label_replace((clamp_max(count({__name__=~\"target_info|jvm_memory_used_bytes|http_server_request_duration_seconds_count\",service_name=\"shaka-server\",deployment_environment=\"${environment}\"}), 1) or vector(0)), \"name\", \"shaka-server\", \"__name__\", \".*\") or label_replace((clamp_max(count(system_cpu_time_seconds_total{service_name=\"shaka-host\",deployment_environment=\"${environment}\"}), 1) or vector(0)), \"name\", \"alloy.service\", \"__name__\", \".*\"))",
           "instant": false,
           "range": true,
           "refId": "A",
@@ -757,7 +757,7 @@
             "uid": "${prometheus_datasource_uid}"
           },
           "editorMode": "code",
-          "expr": "(target_info{service_name=\"shaka-server\",deployment_environment=\"${environment}\"} or label_replace(clamp_max(count(count by (service_instance_id) (system_cpu_time_seconds_total{service_name=\"shaka-host\",deployment_environment=\"${environment}\"})), 1), \"name\", \"alloy.service\", \"__name__\", \".*\"))",
+          "expr": "(label_replace((clamp_max(count({__name__=~\"target_info|jvm_memory_used_bytes|http_server_request_duration_seconds_count\",service_name=\"shaka-server\",deployment_environment=\"${environment}\"}), 1) or vector(0)), \"name\", \"shaka-server\", \"__name__\", \".*\") or label_replace((clamp_max(count(system_cpu_time_seconds_total{service_name=\"shaka-host\",deployment_environment=\"${environment}\"}), 1) or vector(0)), \"name\", \"alloy.service\", \"__name__\", \".*\"))",
           "instant": false,
           "range": true,
           "refId": "A",
@@ -793,7 +793,7 @@
             "uid": "${prometheus_datasource_uid}"
           },
           "editorMode": "code",
-          "expr": "count by (service_name, deployment_environment) ({__name__=~\"target_info|system_cpu_time_seconds_total\",service_name=~\"shaka-server|shaka-host\",deployment_environment=\"${environment}\"})",
+          "expr": "count by (service_name, deployment_environment) ({__name__=~\"target_info|jvm_memory_used_bytes|http_server_request_duration_seconds_count|system_cpu_time_seconds_total\",service_name=~\"shaka-server|shaka-host\",deployment_environment=\"${environment}\"}) or (label_replace(label_replace(vector(0), \"service_name\", \"shaka-server\", \"__name__\", \".*\"), \"deployment_environment\", \"${environment}\", \"__name__\", \".*\") or label_replace(label_replace(vector(0), \"service_name\", \"shaka-host\", \"__name__\", \".*\"), \"deployment_environment\", \"${environment}\", \"__name__\", \".*\"))",
           "instant": false,
           "range": true,
           "refId": "A"

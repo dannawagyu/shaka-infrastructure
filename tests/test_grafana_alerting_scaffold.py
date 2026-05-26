@@ -53,7 +53,7 @@ class GrafanaAlertingScaffoldTest(unittest.TestCase):
         self.assertIn("intervalMs    = 15000", tf)
         self.assertIn('query     = { params = ["B"] }', tf)
         for query_part in [
-            'target_info{service_name=\\"shaka-server\\",deployment_environment=\\"${var.environment}\\"}',
+            '{__name__=~\\"target_info|jvm_memory_used_bytes|http_server_request_duration_seconds_count\\",service_name=\\"shaka-server\\",deployment_environment=\\"${var.environment}\\"}',
             'system_cpu_time_seconds_total{service_name=\\"shaka-host\\",deployment_environment=\\"${var.environment}\\"}',
             'http_server_request_duration_seconds_count{service_name=\\"shaka-server\\",deployment_environment=\\"${var.environment}\\"',
             'jvm_memory_used_bytes{service_name=\\"shaka-server\\",deployment_environment=\\"${var.environment}\\",jvm_memory_type=\\"heap\\"}',
