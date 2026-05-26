@@ -33,7 +33,6 @@ otelcol.receiver.hostmetrics "shaka_host" {
   memory {}
   network {}
   paging {}
-  processes {}
 
   output {
     metrics = [otelcol.processor.resource.shaka_host.input]

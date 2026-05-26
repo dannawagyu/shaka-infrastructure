@@ -276,6 +276,42 @@ if [[ -z "$obs_env_file" || ! -f "$obs_env_file" ]]; then
   exit 1
 fi
 printf 'EC2_INSTANCE_ID="%s"\n' "$instance_id" | sudo tee -a "$obs_env_file" >/dev/null
+sudo python3 - "$obs_env_file" <<'PY'
+import os
+import stat
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+required = {
+    "GRAFANA_CLOUD_OTLP_ENDPOINT",
+    "GRAFANA_CLOUD_OTLP_USERNAME",
+    "GRAFANA_CLOUD_OTLP_PASSWORD",
+    "OTEL_SERVICE_NAME",
+    "OTEL_DEPLOYMENT_ENVIRONMENT",
+    "EC2_INSTANCE_ID",
+}
+values = {}
+for raw in path.read_text(encoding="utf-8").splitlines():
+    line = raw.strip()
+    if not line or line.startswith("#") or "=" not in line:
+        continue
+    key, value = line.split("=", 1)
+    values[key.strip()] = value.strip().strip('"').strip("'")
+missing = sorted(key for key in required if not values.get(key))
+if missing:
+    raise SystemExit("ERROR: missing required Alloy OTLP env keys: " + ", ".join(missing))
+endpoint = values["GRAFANA_CLOUD_OTLP_ENDPOINT"]
+if not (endpoint.startswith("https://") and (".grafana.net" in endpoint or ".grafana.com" in endpoint)):
+    raise SystemExit("ERROR: GRAFANA_CLOUD_OTLP_ENDPOINT must be a Grafana Cloud HTTPS endpoint")
+for key, value in values.items():
+    lowered = value.lower()
+    if "<" in value or ">" in value or "placeholder" in lowered or "changeme" in lowered:
+        raise SystemExit(f"ERROR: placeholder value is not allowed for {key}")
+mode = stat.S_IMODE(path.stat().st_mode)
+if mode & 0o077:
+    raise SystemExit("ERROR: staged Alloy OTLP env file must not be group/world readable")
+PY
 
 sudo install -d -o ubuntu -g ubuntu -m 0755 "$RELEASES_DIR" "$REMOTE_DIR"
 sudo install -o ubuntu -g ubuntu -m 0644 "${REMOTE_STAGING_DIR}/${JAR_FILE}" "${RELEASES_DIR}/${JAR_FILE}"
