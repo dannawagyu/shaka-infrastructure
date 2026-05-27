@@ -34,7 +34,9 @@ Before applying the dashboard, confirm the deployed server is still visible in G
 
 ```promql
 target_info{service_name="shaka-server"}
-system_cpu_time_seconds_total{service_name="shaka-host"}
+system_cpu_time_seconds_total or node_cpu_seconds_total
+system_memory_usage_bytes or node_memory_MemAvailable_bytes
+system_filesystem_usage_bytes or node_filesystem_avail_bytes
 jvm_memory_used_bytes{service_name="shaka-server"}
 http_server_request_duration_seconds_count{service_name="shaka-server"}
 ```
@@ -48,7 +50,7 @@ For `Shaka Amazon RDS`, also confirm before any plan/apply that `GRAFANA_CLOUDWA
 `Shaka Prod Overview` includes:
 
 - app OTLP heartbeat status: any recent `target_info`, `jvm_memory_used_bytes`, or `http_server_request_duration_seconds_count` series for `service_name="shaka-server",deployment_environment="prod"`, rendered as `UP`/`DOWN` instead of raw `1`/`0`;
-- host OTLP heartbeat status: `system_cpu_time_seconds_total{service_name="shaka-host",deployment_environment="prod"}`, rendered as `UP`/`DOWN` instead of raw `1`/`0`;
+- host OTLP heartbeat status: any recent `system_cpu_time_seconds_total`, `node_cpu_seconds_total`, or `up` series for `service_name="shaka-host",deployment_environment="prod"`, rendered as `UP`/`DOWN` instead of raw `1`/`0`;
 - service label inventory from OTLP app and host heartbeat metrics, filtered by `deployment_environment`, rendered as `PRESENT`/`MISSING`;
 - core systemd service state for `shaka-server.service`, `nginx.service`, and `alloy.service`, rendered as `ACTIVE`/`DOWN`;
 - HTTP request and 5xx rates; the 5xx panel renders 0 when there are no error series;

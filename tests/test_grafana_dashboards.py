@@ -94,17 +94,17 @@ class GrafanaDashboardRenderingTest(unittest.TestCase):
             'up{job=\\\"shaka-server\\\"}',
             'up{job=\\\"shaka-host\\\"}',
             'http_server_requests_seconds_count',
-            'node_cpu_seconds_total',
-            'node_memory_MemAvailable_bytes',
-            'node_filesystem_avail_bytes',
         ]:
             self.assertNotIn(legacy, rendered)
         for expected in [
             '{__name__=~\\\"target_info|jvm_memory_used_bytes|http_server_request_duration_seconds_count',
             'system_cpu_time_seconds_total{service_name=',
+            'node_cpu_seconds_total{service_name=',
             'http_server_request_duration_seconds_count{service_name=',
             'system_memory_usage_bytes{service_name=',
+            'node_memory_MemAvailable_bytes{service_name=',
             'system_filesystem_usage_bytes{service_name=',
+            'node_filesystem_avail_bytes{service_name=',
             'shaka-server',
             'shaka-host',
         ]:
