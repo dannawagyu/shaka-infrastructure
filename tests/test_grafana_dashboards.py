@@ -94,6 +94,8 @@ class GrafanaDashboardRenderingTest(unittest.TestCase):
             'up{job=\\\"shaka-server\\\"}',
             'up{job=\\\"shaka-host\\\"}',
             'http_server_requests_seconds_count',
+            'Service labels present',
+            'Core systemd active',
         ]:
             self.assertNotIn(legacy, rendered)
         for forbidden in [
@@ -113,10 +115,45 @@ class GrafanaDashboardRenderingTest(unittest.TestCase):
             'node_filesystem_size_bytes{service_name=',
             'node_systemd_unit_state{service_name=',
             'http_server_request_duration_seconds_count{service_name=',
+            'App label: shaka-server',
+            'Host label: shaka-host',
+            'App systemd: shaka-server',
+            'Proxy systemd: nginx',
+            'Telemetry systemd: alloy',
+            'name=\\\"shaka-server.service\\\"',
+            'name=\\\"nginx.service\\\"',
+            'name=\\\"alloy.service\\\"',
             'shaka-server',
             'shaka-host',
         ]:
             self.assertIn(expected, rendered)
+
+    def test_status_panels_are_split_and_named_for_operator_readability(self) -> None:
+        dashboard = self.rendered_dashboard()
+        panels_by_title = {panel["title"]: panel for panel in dashboard.get("panels", [])}
+
+        self.assertNotIn("Service labels present", panels_by_title)
+        self.assertNotIn("Core systemd active", panels_by_title)
+
+        label_panels = {
+            "App label: shaka-server": 'service_name="shaka-server"',
+            "Host label: shaka-host": 'service_name="shaka-host"',
+        }
+        for title, selector in label_panels.items():
+            panel = panels_by_title[title]
+            self.assertEqual(panel["fieldConfig"]["defaults"]["mappings"][0]["options"]["1"]["text"], "PRESENT")
+            self.assertIn(selector, panel["targets"][0]["expr"])
+
+        systemd_panels = {
+            "App systemd: shaka-server": 'name="shaka-server.service"',
+            "Proxy systemd: nginx": 'name="nginx.service"',
+            "Telemetry systemd: alloy": 'name="alloy.service"',
+        }
+        for title, selector in systemd_panels.items():
+            panel = panels_by_title[title]
+            self.assertEqual(panel["fieldConfig"]["defaults"]["mappings"][0]["options"]["1"]["text"], "ACTIVE")
+            self.assertIn(selector, panel["targets"][0]["expr"])
+            self.assertIn("or vector(0)", panel["targets"][0]["expr"])
 
     def test_dashboard_uses_loki_zero_fallback_and_safe_tempo_filter(self) -> None:
         loki_stat = self.panel("Loki log entries, last 5m")

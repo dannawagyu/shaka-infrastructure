@@ -182,7 +182,7 @@
     {
       "id": 3,
       "type": "stat",
-      "title": "Service labels present",
+      "title": "App label: shaka-server",
       "gridPos": {
         "x": 12,
         "y": 0,
@@ -200,16 +200,27 @@
             "uid": "${prometheus_datasource_uid}"
           },
           "editorMode": "code",
-          "expr": "count by (service_name, deployment_environment) ({__name__=~\"target_info|jvm_memory_used_bytes|http_server_request_duration_seconds_count|node_cpu_seconds_total\",service_name=~\"shaka-server|shaka-host\",deployment_environment=\"${environment}\"}) or (label_replace(label_replace(vector(0), \"service_name\", \"shaka-server\", \"__name__\", \".*\"), \"deployment_environment\", \"${environment}\", \"__name__\", \".*\") or label_replace(label_replace(vector(0), \"service_name\", \"shaka-host\", \"__name__\", \".*\"), \"deployment_environment\", \"${environment}\", \"__name__\", \".*\"))",
+          "expr": "clamp_max(count({__name__=~\"target_info|jvm_memory_used_bytes|http_server_request_duration_seconds_count\",service_name=\"shaka-server\",deployment_environment=\"${environment}\"}), 1) or vector(0)",
           "instant": false,
           "range": true,
-          "refId": "A",
-          "legendFormat": "{{job}} {{service_name}} {{deployment_environment}}"
+          "refId": "A"
         }
       ],
       "fieldConfig": {
         "defaults": {
-          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          },
           "mappings": [
             {
               "type": "value",
@@ -226,20 +237,7 @@
                 }
               }
             }
-          ],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "red",
-                "value": null
-              },
-              {
-                "color": "green",
-                "value": 1
-              }
-            ]
-          }
+          ]
         },
         "overrides": []
       },
@@ -257,12 +255,13 @@
         "justifyMode": "auto",
         "textMode": "value",
         "wideLayout": true
-      }
+      },
+      "description": "Checks that application telemetry is labeled service_name=\"shaka-server\" for this environment."
     },
     {
       "id": 4,
       "type": "stat",
-      "title": "Core systemd active",
+      "title": "Host label: shaka-host",
       "gridPos": {
         "x": 18,
         "y": 0,
@@ -280,11 +279,89 @@
             "uid": "${prometheus_datasource_uid}"
           },
           "editorMode": "code",
-          "expr": "node_systemd_unit_state{service_name=\"shaka-host\",deployment_environment=\"${environment}\",name=~\"shaka-server.service|nginx.service|alloy.service\",state=\"active\"}",
+          "expr": "clamp_max(count(node_cpu_seconds_total{service_name=\"shaka-host\",deployment_environment=\"${environment}\"}), 1) or vector(0)",
           "instant": false,
           "range": true,
-          "refId": "A",
-          "legendFormat": "{{name}}"
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "MISSING",
+                  "color": "red",
+                  "index": 0
+                },
+                "1": {
+                  "text": "PRESENT",
+                  "color": "green",
+                  "index": 1
+                }
+              }
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "textMode": "value",
+        "wideLayout": true
+      },
+      "description": "Checks that host telemetry is labeled service_name=\"shaka-host\" for this environment."
+    },
+    {
+      "id": 31,
+      "type": "stat",
+      "title": "App systemd: shaka-server",
+      "gridPos": {
+        "x": 0,
+        "y": 4,
+        "w": 8,
+        "h": 4
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${prometheus_datasource_uid}"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${prometheus_datasource_uid}"
+          },
+          "editorMode": "code",
+          "expr": "node_systemd_unit_state{service_name=\"shaka-host\",deployment_environment=\"${environment}\",name=\"shaka-server.service\",state=\"active\"} or vector(0)",
+          "instant": false,
+          "range": true,
+          "refId": "A"
         }
       ],
       "fieldConfig": {
@@ -336,7 +413,166 @@
         "justifyMode": "auto",
         "textMode": "value",
         "wideLayout": true
-      }
+      },
+      "description": "Spring Boot backend systemd unit on the production host."
+    },
+    {
+      "id": 32,
+      "type": "stat",
+      "title": "Proxy systemd: nginx",
+      "gridPos": {
+        "x": 8,
+        "y": 4,
+        "w": 8,
+        "h": 4
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${prometheus_datasource_uid}"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${prometheus_datasource_uid}"
+          },
+          "editorMode": "code",
+          "expr": "node_systemd_unit_state{service_name=\"shaka-host\",deployment_environment=\"${environment}\",name=\"nginx.service\",state=\"active\"} or vector(0)",
+          "instant": false,
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "DOWN",
+                  "color": "red",
+                  "index": 0
+                },
+                "1": {
+                  "text": "ACTIVE",
+                  "color": "green",
+                  "index": 1
+                }
+              }
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "textMode": "value",
+        "wideLayout": true
+      },
+      "description": "Nginx reverse proxy systemd unit on the production host."
+    },
+    {
+      "id": 33,
+      "type": "stat",
+      "title": "Telemetry systemd: alloy",
+      "gridPos": {
+        "x": 16,
+        "y": 4,
+        "w": 8,
+        "h": 4
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${prometheus_datasource_uid}"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${prometheus_datasource_uid}"
+          },
+          "editorMode": "code",
+          "expr": "node_systemd_unit_state{service_name=\"shaka-host\",deployment_environment=\"${environment}\",name=\"alloy.service\",state=\"active\"} or vector(0)",
+          "instant": false,
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "DOWN",
+                  "color": "red",
+                  "index": 0
+                },
+                "1": {
+                  "text": "ACTIVE",
+                  "color": "green",
+                  "index": 1
+                }
+              }
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "textMode": "value",
+        "wideLayout": true
+      },
+      "description": "Grafana Alloy telemetry collector systemd unit on the production host."
     },
     {
       "id": 5,
@@ -344,7 +580,7 @@
       "title": "HTTP request rate by status",
       "gridPos": {
         "x": 0,
-        "y": 4,
+        "y": 8,
         "w": 12,
         "h": 8
       },
@@ -389,7 +625,7 @@
       "title": "HTTP 5xx rate",
       "gridPos": {
         "x": 12,
-        "y": 4,
+        "y": 8,
         "w": 12,
         "h": 8
       },
@@ -446,7 +682,7 @@
       "title": "JVM heap usage %",
       "gridPos": {
         "x": 0,
-        "y": 12,
+        "y": 16,
         "w": 12,
         "h": 8
       },
@@ -509,7 +745,7 @@
       "title": "JVM memory by area",
       "gridPos": {
         "x": 12,
-        "y": 12,
+        "y": 16,
         "w": 12,
         "h": 8
       },
@@ -553,7 +789,7 @@
       "title": "Host CPU usage %",
       "gridPos": {
         "x": 0,
-        "y": 20,
+        "y": 24,
         "w": 8,
         "h": 8
       },
@@ -616,7 +852,7 @@
       "title": "Host memory available %",
       "gridPos": {
         "x": 8,
-        "y": 20,
+        "y": 24,
         "w": 8,
         "h": 8
       },
@@ -679,7 +915,7 @@
       "title": "Root disk used %",
       "gridPos": {
         "x": 16,
-        "y": 20,
+        "y": 24,
         "w": 8,
         "h": 8
       },
@@ -742,7 +978,7 @@
       "title": "Systemd services",
       "gridPos": {
         "x": 0,
-        "y": 28,
+        "y": 32,
         "w": 12,
         "h": 7
       },
@@ -778,7 +1014,7 @@
       "title": "Metric ingestion inventory",
       "gridPos": {
         "x": 12,
-        "y": 28,
+        "y": 32,
         "w": 12,
         "h": 7
       },
@@ -813,7 +1049,7 @@
       "title": "HTTP 401 rate by URI",
       "gridPos": {
         "x": 0,
-        "y": 35,
+        "y": 39,
         "w": 24,
         "h": 8
       },
@@ -859,7 +1095,7 @@
       "title": "Loki log entries, last 5m",
       "gridPos": {
         "x": 0,
-        "y": 43,
+        "y": 47,
         "w": 6,
         "h": 8
       },
@@ -932,7 +1168,7 @@
       "title": "Recent application logs",
       "gridPos": {
         "x": 6,
-        "y": 43,
+        "y": 47,
         "w": 18,
         "h": 8
       },
@@ -969,7 +1205,7 @@
       "title": "Recent Tempo traces",
       "gridPos": {
         "x": 0,
-        "y": 51,
+        "y": 55,
         "w": 24,
         "h": 8
       },
