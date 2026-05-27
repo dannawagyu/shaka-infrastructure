@@ -34,14 +34,17 @@ Before applying the dashboard, confirm the deployed server is still visible in G
 
 ```promql
 target_info{service_name="shaka-server"}
-system_cpu_time_seconds_total or node_cpu_seconds_total
-system_memory_usage_bytes or node_memory_MemAvailable_bytes
-system_filesystem_usage_bytes or node_filesystem_avail_bytes
+node_cpu_seconds_total{service_name="shaka-host",deployment_environment="prod"}
+node_memory_MemAvailable_bytes{service_name="shaka-host",deployment_environment="prod"}
+node_memory_MemTotal_bytes{service_name="shaka-host",deployment_environment="prod"}
+node_filesystem_avail_bytes{service_name="shaka-host",deployment_environment="prod",mountpoint="/"}
+node_filesystem_size_bytes{service_name="shaka-host",deployment_environment="prod",mountpoint="/"}
+node_systemd_unit_state{service_name="shaka-host",deployment_environment="prod",name=~"shaka-server.service|nginx.service|alloy.service",state="active"}
 jvm_memory_used_bytes{service_name="shaka-server"}
 http_server_request_duration_seconds_count{service_name="shaka-server"}
 ```
 
-If these fail, do not apply dashboards as a substitute for ingestion debugging. Check production Alloy first: `systemctl status alloy`, Alloy logs, local `/actuator/prometheus`, and remote_write credentials.
+The host metric source is the production `prometheus.exporter.unix` Alloy component, which exposes node-exporter metric names (`node_cpu_seconds_total`, `node_memory_*`, `node_filesystem_*`, `node_systemd_unit_state`). The dashboard intentionally does not use `system_*` hostmetrics names or `up` fallbacks; if the `node_*` series are missing, fix Alloy host ingestion or labels instead of broadening dashboard queries. If these fail, do not apply dashboards as a substitute for ingestion debugging. Check production Alloy first: `systemctl status alloy`, Alloy logs, the local Unix exporter scrape path, and OTLP credentials.
 
 For `Shaka Amazon RDS`, also confirm before any plan/apply that `GRAFANA_CLOUDWATCH_DATASOURCE_UID` points to a Grafana CloudWatch datasource scoped to the intended Shaka production RDS metrics only, and that the `Shaka Observability` folder is restricted to operators allowed to view production RDS infrastructure names and metrics. If the datasource can read unrelated AWS accounts, environments, or services, tighten the datasource/IAM scope before applying the dashboard.
 
@@ -50,7 +53,7 @@ For `Shaka Amazon RDS`, also confirm before any plan/apply that `GRAFANA_CLOUDWA
 `Shaka Prod Overview` includes:
 
 - app OTLP heartbeat status: any recent `target_info`, `jvm_memory_used_bytes`, or `http_server_request_duration_seconds_count` series for `service_name="shaka-server",deployment_environment="prod"`, rendered as `UP`/`DOWN` instead of raw `1`/`0`;
-- host OTLP heartbeat status: any recent `system_cpu_time_seconds_total`, `node_cpu_seconds_total`, or `up` series for `service_name="shaka-host",deployment_environment="prod"`, rendered as `UP`/`DOWN` instead of raw `1`/`0`;
+- host OTLP heartbeat status: recent `node_cpu_seconds_total` series from the Alloy Unix exporter for `service_name="shaka-host",deployment_environment="prod"`, rendered as `UP`/`DOWN` instead of raw `1`/`0`;
 - service label inventory from OTLP app and host heartbeat metrics, filtered by `deployment_environment`, rendered as `PRESENT`/`MISSING`;
 - core systemd service state for `shaka-server.service`, `nginx.service`, and `alloy.service`, rendered as `ACTIVE`/`DOWN`;
 - HTTP request and 5xx rates; the 5xx panel renders 0 when there are no error series;

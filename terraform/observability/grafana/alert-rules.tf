@@ -34,22 +34,22 @@ resource "grafana_rule_group" "shaka_rfc_0010" {
       }
       root_disk_warn = {
         title     = "Shaka root disk warning"
-        condition = "sum by (service_instance_id, mountpoint) (system_filesystem_usage_bytes{service_name=\"shaka-host\",deployment_environment=\"${var.environment}\",mountpoint=\"/\",type!~\"tmpfs|overlay\",state=\"used\"}) / sum by (service_instance_id, mountpoint) (system_filesystem_limit_bytes{service_name=\"shaka-host\",deployment_environment=\"${var.environment}\",mountpoint=\"/\",type!~\"tmpfs|overlay\"}) > 0.80"
+        condition = "1 - (sum by (service_instance_id, mountpoint) (node_filesystem_avail_bytes{service_name=\"shaka-host\",deployment_environment=\"${var.environment}\",mountpoint=\"/\",fstype!~\"tmpfs|overlay\"}) / sum by (service_instance_id, mountpoint) (node_filesystem_size_bytes{service_name=\"shaka-host\",deployment_environment=\"${var.environment}\",mountpoint=\"/\",fstype!~\"tmpfs|overlay\"})) > 0.80"
         summary   = "Root disk usage is above 80%."
       }
       root_disk_critical = {
         title     = "Shaka root disk critical"
-        condition = "sum by (service_instance_id, mountpoint) (system_filesystem_usage_bytes{service_name=\"shaka-host\",deployment_environment=\"${var.environment}\",mountpoint=\"/\",type!~\"tmpfs|overlay\",state=\"used\"}) / sum by (service_instance_id, mountpoint) (system_filesystem_limit_bytes{service_name=\"shaka-host\",deployment_environment=\"${var.environment}\",mountpoint=\"/\",type!~\"tmpfs|overlay\"}) > 0.90"
+        condition = "1 - (sum by (service_instance_id, mountpoint) (node_filesystem_avail_bytes{service_name=\"shaka-host\",deployment_environment=\"${var.environment}\",mountpoint=\"/\",fstype!~\"tmpfs|overlay\"}) / sum by (service_instance_id, mountpoint) (node_filesystem_size_bytes{service_name=\"shaka-host\",deployment_environment=\"${var.environment}\",mountpoint=\"/\",fstype!~\"tmpfs|overlay\"})) > 0.90"
         summary   = "Root disk usage is above 90%."
       }
       memory_pressure = {
         title     = "Shaka host memory pressure"
-        condition = "sum by (service_instance_id) (system_memory_usage_bytes{service_name=\"shaka-host\",deployment_environment=\"${var.environment}\",state=\"used\"}) / sum by (service_instance_id) (system_memory_usage_bytes{service_name=\"shaka-host\",deployment_environment=\"${var.environment}\"}) > 0.90"
+        condition = "1 - (sum by (service_instance_id) (node_memory_MemAvailable_bytes{service_name=\"shaka-host\",deployment_environment=\"${var.environment}\"}) / sum by (service_instance_id) (node_memory_MemTotal_bytes{service_name=\"shaka-host\",deployment_environment=\"${var.environment}\"})) > 0.90"
         summary   = "Host available memory is below 10% (usage above 90%)."
       }
       cpu_saturation = {
         title     = "Shaka host CPU saturation"
-        condition = "1 - avg by (service_instance_id) (rate(system_cpu_time_seconds_total{service_name=\"shaka-host\",deployment_environment=\"${var.environment}\",state=\"idle\"}[5m])) > 0.90"
+        condition = "1 - avg by (service_instance_id) (rate(node_cpu_seconds_total{service_name=\"shaka-host\",deployment_environment=\"${var.environment}\",mode=\"idle\"}[5m])) > 0.90"
         summary   = "Host CPU usage is above 90%."
       }
       core_systemd_service_down = {
@@ -59,7 +59,7 @@ resource "grafana_rule_group" "shaka_rfc_0010" {
       }
       alloy_down = {
         title     = "Shaka Alloy OTLP pipeline missing"
-        condition = "absent_over_time(system_cpu_time_seconds_total{service_name=\"shaka-host\",deployment_environment=\"${var.environment}\"}[10m]) or vector(0)"
+        condition = "absent_over_time(node_cpu_seconds_total{service_name=\"shaka-host\",deployment_environment=\"${var.environment}\"}[10m]) or vector(0)"
         summary   = "Alloy host metrics heartbeat is missing; verify the Alloy service and Grafana Cloud OTLP exporter."
       }
     }
