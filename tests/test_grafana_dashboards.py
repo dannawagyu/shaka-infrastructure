@@ -141,8 +141,11 @@ class GrafanaDashboardRenderingTest(unittest.TestCase):
         }
         for title, selector in label_panels.items():
             panel = panels_by_title[title]
+            expr = panel["targets"][0]["expr"]
             self.assertEqual(panel["fieldConfig"]["defaults"]["mappings"][0]["options"]["1"]["text"], "PRESENT")
-            self.assertIn(selector, panel["targets"][0]["expr"])
+            self.assertIn(selector, expr)
+            self.assertIn("or on() (0 * max(", expr)
+            self.assertNotIn("or vector(0)", expr)
 
         systemd_panels = {
             "App systemd: shaka-server": 'name="shaka-server.service"',
@@ -151,9 +154,11 @@ class GrafanaDashboardRenderingTest(unittest.TestCase):
         }
         for title, selector in systemd_panels.items():
             panel = panels_by_title[title]
+            expr = panel["targets"][0]["expr"]
             self.assertEqual(panel["fieldConfig"]["defaults"]["mappings"][0]["options"]["1"]["text"], "ACTIVE")
-            self.assertIn(selector, panel["targets"][0]["expr"])
-            self.assertIn("or vector(0)", panel["targets"][0]["expr"])
+            self.assertIn(selector, expr)
+            self.assertIn("or on() (0 * max(", expr)
+            self.assertNotIn("or vector(0)", expr)
 
     def test_dashboard_uses_loki_zero_fallback_and_safe_tempo_filter(self) -> None:
         loki_stat = self.panel("Loki log entries, last 5m")

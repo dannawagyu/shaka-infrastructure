@@ -56,6 +56,8 @@ For `Shaka Amazon RDS`, also confirm before any plan/apply that `GRAFANA_CLOUDWA
 - host OTLP heartbeat status: recent `node_cpu_seconds_total` series from the Alloy Unix exporter for `service_name="shaka-host",deployment_environment="prod"`, rendered as `UP`/`DOWN` instead of raw `1`/`0`;
 - service label inventory from OTLP app and host heartbeat metrics, filtered by `deployment_environment`, rendered as `PRESENT`/`MISSING`;
 - core systemd service state for `shaka-server.service`, `nginx.service`, and `alloy.service`, rendered as `ACTIVE`/`DOWN`;
+
+Status and inventory stat panels intentionally distinguish three states: `1` when the target series exists, `0` when the paired app/host baseline confirms Grafana ingestion is connected but that target series is missing or inactive, and Grafana `No data` when neither side has enough telemetry to prove the connection. They use `or on() (0 * max(<baseline metric>))` rather than unconditional `or vector(0)` for this reason.
 - HTTP request and 5xx rates; the 5xx panel renders 0 when there are no error series;
 - `HTTP 401 rate by URI` for route-level only 401 spike triage, with no user IDs, IP addresses, or request IDs;
 - JVM heap and memory panels;
