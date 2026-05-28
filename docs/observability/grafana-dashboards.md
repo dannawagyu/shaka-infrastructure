@@ -33,14 +33,13 @@ No secrets, tokens, Discord webhooks, remote_write credentials, DB credentials, 
 Before applying the dashboard, confirm the deployed server is still visible in Grafana Explore with the Prometheus datasource:
 
 ```promql
-up
-up{job="shaka-server"}
-up{job="shaka-host"}
-jvm_memory_used_bytes
-node_cpu_seconds_total
+count({__name__=~"target_info|jvm_memory_used_bytes|http_server_request_duration_seconds_count",service_name="shaka-server",deployment_environment="prod"})
+count(system_cpu_time_seconds_total{service_name="shaka-host",deployment_environment="prod"})
+sum(rate(http_server_request_duration_seconds_count{service_name="shaka-server",deployment_environment="prod"}[5m]))
+sum(system_memory_usage_bytes{service_name="shaka-host",deployment_environment="prod"})
 ```
 
-If these fail, do not apply dashboards as a substitute for ingestion debugging. Check production Alloy first: `systemctl status alloy`, Alloy logs, local `/actuator/prometheus`, and remote_write credentials.
+If these fail, do not apply dashboards as a substitute for ingestion debugging. Check production Alloy first: `systemctl status alloy`, Alloy logs, local OTLP listeners, and Grafana Cloud OTLP credentials.
 
 For `Shaka Amazon RDS`, also confirm before any plan/apply that `GRAFANA_CLOUDWATCH_DATASOURCE_UID` points to a Grafana CloudWatch datasource scoped to the intended Shaka production RDS metrics only, and that the `Shaka Observability` folder is restricted to operators allowed to view production RDS infrastructure names and metrics. If the datasource can read unrelated AWS accounts, environments, or services, tighten the datasource/IAM scope before applying the dashboard.
 
@@ -48,14 +47,14 @@ For `Shaka Amazon RDS`, also confirm before any plan/apply that `GRAFANA_CLOUDWA
 
 `Shaka Prod Overview` includes:
 
-- app scrape status: `up{job="shaka-server",deployment_environment="prod"}`, rendered as `UP`/`DOWN` instead of raw `1`/`0`;
-- host scrape status: `up{job="shaka-host",deployment_environment="prod"}`, rendered as `UP`/`DOWN` instead of raw `1`/`0`;
-- service label inventory from `up`, filtered by `deployment_environment`, rendered as `PRESENT`/`MISSING`;
-- core systemd service state for `shaka-server.service`, `nginx.service`, and `alloy.service`, rendered as `ACTIVE`/`DOWN`;
-- HTTP request and 5xx rates; the 5xx panel renders 0 when there are no error series;
-- `HTTP 401 rate by URI` for route-level only 401 spike triage, with no user IDs, IP addresses, or request IDs;
-- JVM heap and memory panels;
-- host CPU, memory, and root disk panels, with memory pressure centered on available memory below 10%;
+- app telemetry status from OTLP app metrics (`target_info`, `jvm_memory_used_bytes`, or `http_server_request_duration_seconds_count`) with `service_name="shaka-server"` / `deployment_environment="prod"`, rendered as `UP`/`DOWN`;
+- host telemetry status from OTLP host metrics (`system_cpu_time_seconds_total`) with `service_name="shaka-host"` / `deployment_environment="prod"`, rendered as `UP`/`DOWN`;
+- service label inventory from app/host OTLP metric families, rendered as `PRESENT`/`MISSING`;
+- core systemd service state for `shaka-server.service`, `nginx.service`, and `alloy.service` when systemd metrics are available, rendered as `ACTIVE`/`DOWN`;
+- HTTP request and 5xx rates using OpenTelemetry HTTP metric/label names; the 5xx panel renders 0 when there are no error series;
+- `HTTP 401 rate by URI` for route-template only 401 spike triage, with no user IDs, IP addresses, or request IDs;
+- JVM heap and memory panels using OpenTelemetry JVM metric/label names;
+- host CPU, memory, and root disk panels using OpenTelemetry host metric names, with memory pressure centered on available memory below 10%;
 - metric ingestion inventory table.
 
 ## Safe plan/apply workflow
@@ -84,7 +83,7 @@ After apply:
 ## Follow-up diagnostics notes
 
 - The HTTP 5xx panel must render `0` rather than `No data` when no 5xx time series exists, so operators can distinguish zero errors from broken ingestion.
-- `HTTP 401 rate by URI` is route-level only: it groups by Micrometer `method`, `uri`, and `status`. Do not add user IDs, IP addresses, request IDs, raw paths, `instance`, or `service_instance_id` to this panel. Keep `UNKNOWN` route values visible so unmapped auth probes are not hidden; if raw paths ever appear in the `uri` label, fix application instrumentation before sharing screenshots or widening dashboard access.
+- `HTTP 401 rate by URI` is route-template level only: it groups by OpenTelemetry semantic labels `http_request_method`, `http_route`, and `http_response_status_code`. Do not add user IDs, IP addresses, request IDs, raw paths, `instance`, or `service_instance_id` to this panel. Keep `UNKNOWN` route values visible so unmapped auth probes are not hidden; if raw paths ever appear in the route-template label, fix application instrumentation before sharing screenshots or widening dashboard access.
 - `Loki log entries, last 5m` counts app logs only by `service_name` and `deployment_environment`.
 - `Recent application logs` shows a narrow Loki stream query filtered only by `service_name` and `deployment_environment`.
 - `Recent Tempo traces` uses TraceQL filtered only by stable `resource.service.name` and `resource.deployment.environment` attributes.

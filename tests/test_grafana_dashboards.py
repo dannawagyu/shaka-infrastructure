@@ -96,6 +96,62 @@ class GrafanaDashboardRenderingTest(unittest.TestCase):
         self.assertIn('resource.service.name = "shaka-server"', trace_query)
         self.assertIn('resource.deployment.environment = "prod"', trace_query)
 
+    def test_overview_prometheus_queries_match_otlp_metric_and_label_names(self) -> None:
+        dashboard = self.rendered_dashboard()
+        prometheus_exprs = []
+        for panel in iter_panels(dashboard):
+            if panel.get("datasource", {}).get("type") == "prometheus":
+                prometheus_exprs.extend(target.get("expr", "") for target in panel.get("targets", []))
+        combined = "\n".join(prometheus_exprs)
+
+        self.assertIn("service_name=\"shaka-server\"", combined)
+        self.assertIn("deployment_environment=\"prod\"", combined)
+        self.assertIn("http_server_request_duration_seconds_count", combined)
+        self.assertIn("http_response_status_code", combined)
+        self.assertIn("http_request_method", combined)
+        self.assertIn("http_route", combined)
+        self.assertIn("jvm_memory_limit_bytes", combined)
+        self.assertIn("jvm_memory_type", combined)
+        self.assertIn("system_cpu_time_seconds_total", combined)
+        self.assertIn("system_memory_usage_bytes", combined)
+        self.assertIn("system_filesystem_usage_bytes", combined)
+        self.assertIn("system_filesystem_limit_bytes", combined)
+
+        for legacy in [
+            "up{job=",
+            "http_server_requests_seconds_count",
+            "status=~\"5..\"",
+            "area=\"heap\"",
+            "jvm_memory_max_bytes",
+            "node_cpu_seconds_total",
+            "node_memory_MemAvailable_bytes",
+            "node_filesystem_avail_bytes",
+        ]:
+            self.assertNotIn(legacy, combined)
+
+    def test_cloudwatch_is_only_used_by_rds_dashboard(self) -> None:
+        overview = self.rendered_dashboard()
+        overview_datasources = {
+            panel.get("datasource", {}).get("type")
+            for panel in iter_panels(overview)
+            if isinstance(panel.get("datasource"), dict)
+        }
+        self.assertNotIn("cloudwatch", overview_datasources)
+
+        rds = self.rendered_rds_dashboard()
+        datasource_variables = {
+            item.get("name"): item
+            for item in rds.get("templating", {}).get("list", [])
+        }
+        self.assertEqual(datasource_variables["datasource"]["query"], "cloudwatch")
+        cloudwatch_targets = [
+            target
+            for panel in iter_panels(rds)
+            for target in panel.get("targets", [])
+            if target.get("namespace") == "AWS/RDS"
+        ]
+        self.assertGreater(len(cloudwatch_targets), 0)
+
     def test_loki_and_tempo_queries_avoid_sensitive_or_high_cardinality_filters(self) -> None:
         dashboard = self.rendered_dashboard()
         query_text = []
