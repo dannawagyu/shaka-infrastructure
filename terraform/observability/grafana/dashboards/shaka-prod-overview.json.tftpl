@@ -836,7 +836,7 @@
           "instant": false,
           "range": true,
           "refId": "A",
-          "legendFormat": "{{http_request_method}} {{http_route}}"
+          "legendFormat": "{{http_request_method}} {{http_route}} 401"
         }
       ],
       "fieldConfig": {
@@ -855,7 +855,7 @@
           "sort": "desc"
         }
       },
-      "description": "Route-template level 401 diagnostics for auth spikes. Uses OpenTelemetry semantic labels only; never user, IP, request ID, or instance labels."
+      "description": "Route-template level 401 diagnostics for auth spikes. Each color/series is one method + route-template 401 rate. Uses OpenTelemetry semantic labels only; never user, IP, request ID, or instance labels."
     },
     {
       "id": 15,
@@ -969,7 +969,7 @@
     },
     {
       "id": 17,
-      "type": "traces",
+      "type": "table",
       "title": "Recent Tempo traces",
       "gridPos": {
         "x": 0,
@@ -993,8 +993,10 @@
           "refId": "A"
         }
       ],
-      "options": {},
-      "description": "Recent traces filtered only by stable service/environment resource attributes. Do not add user, IP, request ID, service instance, or raw URL/path attributes."
+      "options": {
+        "showHeader": true
+      },
+      "description": "Recent Tempo trace search results filtered only by stable service/environment resource attributes. Use a table because Grafana's traces visualization renders a single trace traversal rather than TraceQL search results. Do not add user, IP, request ID, service instance, or raw URL/path attributes."
     }
   ],
   "refresh": "30s",
