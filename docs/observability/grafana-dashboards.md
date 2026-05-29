@@ -52,7 +52,7 @@ For `Shaka Amazon RDS`, also confirm before any plan/apply that `GRAFANA_CLOUDWA
 - service label inventory from app/host OTLP metric families, rendered as `PRESENT`/`MISSING`;
 - core systemd service state for `shaka-server.service`, `nginx.service`, and `alloy.service` when systemd metrics are available, rendered as `ACTIVE`/`DOWN`;
 - HTTP request and 5xx rates using OpenTelemetry HTTP metric/label names; the 5xx panel renders 0 when there are no error series;
-- `HTTP 401 rate by URI` for route-template only 401 spike triage, with no user IDs, IP addresses, or request IDs;
+- `HTTP 401 rate by URI` for route-template only 401 spike triage, with each color/series labeled as one method + route-template 401 rate and no user IDs, IP addresses, or request IDs;
 - JVM heap and memory panels using OpenTelemetry JVM metric/label names;
 - host CPU, memory, and root disk panels using OpenTelemetry host metric names, with memory pressure centered on available memory below 10%;
 - metric ingestion inventory table.
@@ -86,7 +86,7 @@ After apply:
 - `HTTP 401 rate by URI` is route-template level only: it groups by OpenTelemetry semantic labels `http_request_method`, `http_route`, and `http_response_status_code`. Do not add user IDs, IP addresses, request IDs, raw paths, `instance`, or `service_instance_id` to this panel. Keep `UNKNOWN` route values visible so unmapped auth probes are not hidden; if raw paths ever appear in the route-template label, fix application instrumentation before sharing screenshots or widening dashboard access.
 - `Loki log entries, last 5m` counts app logs only by `service_name` and `deployment_environment`.
 - `Recent application logs` shows a narrow Loki stream query filtered only by `service_name` and `deployment_environment`.
-- `Recent Tempo traces` uses TraceQL filtered only by stable `resource.service.name` and `resource.deployment.environment` attributes.
+- `Recent Tempo traces` uses a table panel with TraceQL filtered only by stable `resource.service.name` and `resource.deployment.environment` attributes. Use a table for recent trace search results; Grafana's traces visualization is for rendering a selected single trace traversal.
 - Do not add user IDs, IP addresses, request IDs, `instance`, `service_instance_id`, raw URL paths, request bodies, Authorization/JWT material, or user-generated content as Loki labels, Tempo resource attributes, legend labels, or dashboard variables.
 - Host memory pressure is treated as available memory below 10% / usage above 90%. The dashboard turns red below 10% available and green at or above 20% available.
 

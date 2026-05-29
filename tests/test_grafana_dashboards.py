@@ -92,9 +92,20 @@ class GrafanaDashboardRenderingTest(unittest.TestCase):
         self.assertIn("or vector(0)", loki_stat["targets"][0]["expr"])
         self.assertEqual(loki_stat["gridPos"]["h"], 8)
 
-        trace_query = self.panel("Recent Tempo traces")["targets"][0]["query"]
+        trace_panel = self.panel("Recent Tempo traces")
+        self.assertEqual(trace_panel["type"], "table")
+        trace_query = trace_panel["targets"][0]["query"]
         self.assertIn('resource.service.name = "shaka-server"', trace_query)
         self.assertIn('resource.deployment.environment = "prod"', trace_query)
+
+    def test_401_panel_legend_explains_color_series(self) -> None:
+        panel = self.panel("HTTP 401 rate by URI")
+        target = panel["targets"][0]
+
+        self.assertIn("http_route", target["expr"])
+        self.assertIn("http_request_method", target["expr"])
+        self.assertEqual(target["legendFormat"], "{{http_request_method}} {{http_route}} 401")
+        self.assertIn("Each color/series is one method + route-template 401 rate", panel["description"])
 
     def test_overview_prometheus_queries_match_otlp_metric_and_label_names(self) -> None:
         dashboard = self.rendered_dashboard()
