@@ -143,6 +143,12 @@ class GrafanaDashboardRenderingTest(unittest.TestCase):
         ]:
             self.assertNotIn(unsupported, combined)
 
+    def test_dashboard_panel_ids_are_unique(self) -> None:
+        dashboard = self.rendered_dashboard()
+        panel_ids = [panel.get("id") for panel in iter_panels(dashboard)]
+        duplicated = sorted({panel_id for panel_id in panel_ids if panel_ids.count(panel_id) > 1})
+        self.assertEqual(duplicated, [])
+
     def test_core_systemd_status_is_split_by_operator_service(self) -> None:
         dashboard = self.rendered_dashboard()
         expected_units = {
