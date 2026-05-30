@@ -127,7 +127,7 @@ class GrafanaDashboardRenderingTest(unittest.TestCase):
         self.assertIn("node_memory_MemAvailable_bytes", combined)
         self.assertIn("node_memory_MemTotal_bytes", combined)
         self.assertIn("node_filesystem_size_bytes", combined)
-        self.assertIn("node_filesystem_free_bytes", combined)
+        self.assertIn("node_filesystem_avail_bytes", combined)
         self.assertIn("node_systemd_unit_state", combined)
 
         for unsupported in [

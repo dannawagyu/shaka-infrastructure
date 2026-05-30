@@ -856,7 +856,7 @@
             "uid": "${prometheus_datasource_uid}"
           },
           "editorMode": "code",
-          "expr": "100 * (1 - (sum(node_filesystem_free_bytes{service_name=\"shaka-host\",deployment_environment=\"${environment}\",mountpoint=\"/\",fstype!~\"tmpfs|overlay\"}) / sum(node_filesystem_size_bytes{service_name=\"shaka-host\",deployment_environment=\"${environment}\",mountpoint=\"/\",fstype!~\"tmpfs|overlay\"})))",
+          "expr": "100 * (1 - (sum(node_filesystem_avail_bytes{service_name=\"shaka-host\",deployment_environment=\"${environment}\",mountpoint=\"/\",fstype!~\"tmpfs|overlay\"}) / sum(node_filesystem_size_bytes{service_name=\"shaka-host\",deployment_environment=\"${environment}\",mountpoint=\"/\",fstype!~\"tmpfs|overlay\"})))",
           "instant": false,
           "range": true,
           "refId": "A",
@@ -955,7 +955,7 @@
             "uid": "${prometheus_datasource_uid}"
           },
           "editorMode": "code",
-          "expr": "count by (service_name, deployment_environment) ({__name__=~\"target_info|jvm_memory_used_bytes|http_server_request_duration_seconds_count|node_cpu_seconds_total|node_memory_MemAvailable_bytes|node_filesystem_size_bytes\",service_name=~\"shaka-server|shaka-host\",deployment_environment=\"${environment}\"}) or (label_replace(label_replace(vector(0), \"service_name\", \"shaka-server\", \"__name__\", \".*\"), \"deployment_environment\", \"${environment}\", \"__name__\", \".*\") or label_replace(label_replace(vector(0), \"service_name\", \"shaka-host\", \"__name__\", \".*\"), \"deployment_environment\", \"${environment}\", \"__name__\", \".*\"))",
+          "expr": "count by (service_name, deployment_environment) ({__name__=~\"target_info|jvm_memory_used_bytes|http_server_request_duration_seconds_count|node_cpu_seconds_total|node_memory_MemAvailable_bytes|node_filesystem_size_bytes|node_filesystem_avail_bytes\",service_name=~\"shaka-server|shaka-host\",deployment_environment=\"${environment}\"}) or (label_replace(label_replace(vector(0), \"service_name\", \"shaka-server\", \"__name__\", \".*\"), \"deployment_environment\", \"${environment}\", \"__name__\", \".*\") or label_replace(label_replace(vector(0), \"service_name\", \"shaka-host\", \"__name__\", \".*\"), \"deployment_environment\", \"${environment}\", \"__name__\", \".*\"))",
           "instant": false,
           "range": true,
           "refId": "A",
