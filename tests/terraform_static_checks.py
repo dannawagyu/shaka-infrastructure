@@ -169,19 +169,8 @@ def main() -> int:
         assert_contains(gitignore, pattern, f".gitignore missing required pattern matching {pattern}")
 
     readme = read(ROOT / "README.md")
-    assert_contains(readme, r'Terraform state.*sensitive|sensitive.*Terraform state', "README must warn Terraform state can contain sensitive values")
-    assert_contains(readme, r'secrets?', "README must document secrets handling")
-    assert_contains(readme, r'terraform/bootstrap/backend', "README must document the backend bootstrap root")
-    assert_contains(readme, r'dannawagyu-shaka-prod-terraform-state', "README must document the production backend bucket")
-    assert_contains(readme, r'shaka-prod-terraform-locks', "README must document the production backend lock table")
-    assert_contains(readme, r'terraform init -reconfigure', "README must document remote backend reconfiguration")
-    assert_contains(readme, r'lifecycle cost controls', "README must document backend lifecycle cost controls")
-    assert_contains(readme, r'S3 server access logging|access logging', "README must document state bucket access logging")
-    assert_contains(readme, r'deletion protection', "README must document backend lock table deletion protection")
-    assert_contains(readme, r'Auden.*approv|approv.*Auden', "README must keep production apply behind explicit Auden approval")
-    assert_contains(readme, r'existing.*EC2.*RDS|RDS.*existing.*EC2', "README must document the existing EC2 + RDS production path")
-    assert_contains(readme, r'import', "README must document existing EC2/VPC import or reference path")
-    assert_contains(readme, r'destroy|prevent_destroy|deletion_protection', "README must document guarded destroy/deletion behavior")
+    assert_contains(readme, r'shaka-wiki', "README must point to canonical Shaka wiki")
+    assert_contains(readme, r'engineering/repository-docs/shaka-infrastructure', "README must point to infrastructure repository docs in the wiki")
 
     print("Terraform static guardrail checks passed")
     return 0

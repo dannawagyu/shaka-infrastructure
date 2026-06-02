@@ -5,7 +5,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 TF = ROOT / "terraform" / "observability" / "grafana"
-DOC = ROOT / "docs" / "observability" / "grafana-prometheus-loki-stack.md"
+README = ROOT / "README.md"
 
 class GrafanaPrometheusLokiStackTest(unittest.TestCase):
     def test_loki_inputs_and_free_tier_defaults_exist(self):
@@ -21,23 +21,10 @@ class GrafanaPrometheusLokiStackTest(unittest.TestCase):
         self.assertNotIn('deployment_environment = var.environment', text)
         self.assertIn('metrics_backend = "grafana-cloud-prometheus"', text)
 
-    def test_runbook_documents_ownership_and_privacy(self):
-        text = DOC.read_text()
-        for phrase in [
-            "Prometheus / Metrics",
-            "Loki / Logs",
-            "Terraform owns",
-            "manual",
-            "Discord contact point",
-            "service.name=shaka-server",
-            "deployment.environment=prod",
-            "no request bodies",
-            "no Authorization/JWT headers",
-            "avoid userId",
-            "infra-owned production deploy path",
-            "Closes #3",
-        ]:
-            self.assertIn(phrase, text)
+    def test_runbook_moved_to_canonical_wiki(self):
+        text = README.read_text()
+        self.assertIn("shaka-wiki", text)
+        self.assertIn("engineering/repository-docs/shaka-infrastructure", text)
         self.assertNotIn("discord.com/api/" + "webhooks", text)
 
 if __name__ == "__main__":

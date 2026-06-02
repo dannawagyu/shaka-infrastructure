@@ -4,33 +4,14 @@ from pathlib import Path
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
-DOC = ROOT / "docs" / "aws" / "production-import-plan.md"
+README = ROOT / "README.md"
 TF = ROOT / "terraform" / "environments" / "prod" / "existing-resources.tf"
 
 class ProductionImportPlanTest(unittest.TestCase):
-    def test_inventory_covers_required_resource_classes(self):
-        text = DOC.read_text()
-        for phrase in [
-            "discover -> import/reference -> plan no-op",
-            "EC2 app host",
-            "VPC",
-            "subnet",
-            "route table",
-            "internet gateway",
-            "app security group",
-            "Elastic IP",
-            "SSH/HTTP/HTTPS ingress",
-            "Route53",
-            "Let's Encrypt/Certbot",
-            "IAM instance profile",
-            "EBS root volume",
-            "backup",
-            "resource` blocks first",
-            "no unexpected replacement",
-            "No AWS credentials",
-            "Closes #4",
-        ]:
-            self.assertIn(phrase, text)
+    def test_production_import_plan_moved_to_canonical_wiki(self):
+        text = README.read_text()
+        self.assertIn("shaka-wiki", text)
+        self.assertIn("engineering/repository-docs/shaka-infrastructure", text)
 
     def test_terraform_data_scaffold_uses_existing_ids_and_no_rebuild(self):
         text = TF.read_text()
