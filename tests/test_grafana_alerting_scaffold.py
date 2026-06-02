@@ -9,7 +9,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 GRAFANA_DIR = ROOT / "terraform" / "observability" / "grafana"
 PROD_USER_DATA = ROOT / "terraform" / "environments" / "prod" / "templates" / "app-user-data.sh.tftpl"
-DOC = ROOT / "docs" / "observability" / "grafana-alerting.md"
+README = ROOT / "README.md"
 
 EXPECTED_ALERT_UIDS = {
     "app_scrape_down",
@@ -91,21 +91,12 @@ class GrafanaAlertingScaffoldTest(unittest.TestCase):
         self.assertIn('available memory is below 10%', body)
         self.assertIn('usage above 90%', body)
 
-    def test_docs_cover_safe_operations_and_discord_test(self) -> None:
-        self.assertTrue(DOC.is_file(), f"missing runbook: {DOC}")
-        text = DOC.read_text()
-        required_phrases = [
-            "terraform init -backend=false",
-            "terraform plan",
-            "TF_VAR_grafana_cloud_url",
-            "TF_VAR_grafana_auth",
-            "Discord contact point",
-            "manual",
-            "test notification",
-            "Closes #2",
-        ]
-        for phrase in required_phrases:
-            self.assertIn(phrase, text, f"docs missing phrase: {phrase}")
+    def test_runbook_moved_to_canonical_wiki(self) -> None:
+        text = README.read_text()
+        self.assertIn("shaka-wiki", text)
+        self.assertIn("engineering/repository-docs/shaka-infrastructure", text)
+        tf = self.read_all_tf()
+        self.assertIn("WagyuShark/shaka-wiki", tf)
 
     def test_otlp_alloy_config_labels_match_alert_queries(self) -> None:
         alloy = ROOT / "deploy" / "grafana" / "alloy-otlp-config.alloy"

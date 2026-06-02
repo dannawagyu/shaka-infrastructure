@@ -4,53 +4,21 @@ from pathlib import Path
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
-DOC = ROOT / "docs" / "observability" / "loki-tempo-diagnostics-staging.md"
+README = ROOT / "README.md"
 STACK_VARIABLES = ROOT / "terraform" / "observability" / "grafana" / "stack-variables.tf"
 
 
 class LokiTempoDiagnosticsStagingTest(unittest.TestCase):
-    def test_runbook_stages_loki_without_enabling_ingestion(self):
-        text = DOC.read_text()
-        for phrase in [
-            "Closes #24",
-            "RFC-0017 remains draft",
-            "enable_loki_ingestion = false",
-            "application JSON file logs",
-            "No request bodies",
-            "Authorization/JWT/refresh/Apple tokens",
-            "database credentials",
-            "Grafana tokens",
-            "Discord webhooks",
-            "user-generated note/comment content",
-            "service_name",
-            "deployment_environment",
-            "service_instance_id",
-            "log_source",
-            "Disable the Loki pipeline without changing Prometheus remote_write",
-        ]:
-            self.assertIn(phrase, text)
+    def test_loki_runbook_moved_to_canonical_wiki(self):
+        text = README.read_text()
+        self.assertIn("shaka-wiki", text)
+        self.assertIn("engineering/repository-docs/shaka-infrastructure", text)
         self.assertNotIn("discord.com/api/" + "webhooks", text)
 
-    def test_runbook_evaluates_tempo_without_enabling_tracing(self):
-        text = DOC.read_text()
-        for phrase in [
-            "Closes #25",
-            "RFC-0018 remains draft",
-            "enable_tempo_tracing = false",
-            "OpenTelemetry Java agent + Alloy OTLP + Tempo",
-            "Sentry-only tracing",
-            "1%",
-            "5%",
-            "CPU",
-            "memory",
-            "heap",
-            "startup",
-            "request latency",
-            "Disable the Java agent and OTLP export",
-            "/actuator/health",
-            "/actuator/prometheus",
-        ]:
-            self.assertIn(phrase, text)
+    def test_tempo_runbook_moved_to_canonical_wiki(self):
+        text = README.read_text()
+        self.assertIn("shaka-wiki", text)
+        self.assertIn("engineering/repository-docs/shaka-infrastructure", text)
 
     def test_tempo_inputs_are_sensitive_and_disabled_by_default(self):
         text = STACK_VARIABLES.read_text()
