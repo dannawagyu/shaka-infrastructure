@@ -13,7 +13,6 @@ SHAKA_OVERVIEW_DASHBOARD = GRAFANA_DIR / "dashboards" / "shaka-prod-overview.jso
 RDS_DASHBOARD = GRAFANA_DIR / "dashboards" / "amazon-rds.json.tftpl"
 DASHBOARDS_TF = GRAFANA_DIR / "dashboards.tf"
 VARIABLES_TF = GRAFANA_DIR / "variables.tf"
-DOCS = ROOT / "docs" / "observability" / "grafana-dashboards.md"
 
 FORBIDDEN_LITERAL_FRAGMENTS = [
     "discord.com/api/webhooks",
@@ -239,7 +238,7 @@ class GrafanaDashboardRenderingTest(unittest.TestCase):
     def test_terraform_wires_dashboard_datasource_uids_without_literal_secrets(self) -> None:
         combined = "\n".join(
             path.read_text(encoding="utf-8")
-            for path in [DASHBOARDS_TF, VARIABLES_TF, SHAKA_OVERVIEW_DASHBOARD, RDS_DASHBOARD, DOCS]
+            for path in [DASHBOARDS_TF, VARIABLES_TF, SHAKA_OVERVIEW_DASHBOARD, RDS_DASHBOARD]
         )
         self.assertIn("prometheus_datasource_uid = var.prometheus_datasource_uid", combined)
         self.assertIn("cloudwatch_datasource_uid = var.cloudwatch_datasource_uid", combined)

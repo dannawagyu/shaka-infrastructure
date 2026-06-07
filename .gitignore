@@ -26,3 +26,6 @@ __pycache__/
 # Local production values for operator-filled Terraform plans
 production.local.tfvars
 terraform/environments/prod/production.local.tfvars
+
+# Claude Code HUD/session cache
+.omc/

@@ -195,10 +195,12 @@ fi
 stage="$(mktemp -d /tmp/shaka-otel-agent.XXXXXX)"
 cleanup() { rm -rf "$stage"; }
 trap cleanup EXIT
-curl -fsSL "$OTEL_AGENT_URL.sha256" -o "$stage/opentelemetry-javaagent.jar.sha256"
+# Verify the agent against the SHA pinned in CI (passed in as $OTEL_JAVA_AGENT_SHA256)
+# rather than against a .sha256 file fetched alongside it. A compromised Maven Central
+# response could serve a malicious jar plus a matching malicious .sha256 file; the
+# CI-supplied value is the only trust anchor.
 curl -fsSL "$OTEL_AGENT_URL" -o "$stage/opentelemetry-javaagent.jar"
-expected="$(tr -d '[:space:]' < "$stage/opentelemetry-javaagent.jar.sha256")"
-printf '%s  %s\n' "$expected" "$stage/opentelemetry-javaagent.jar" | sha256sum -c - >/dev/null
+printf '%s  %s\n' "$OTEL_JAVA_AGENT_SHA256" "$stage/opentelemetry-javaagent.jar" | sha256sum -c - >/dev/null
 sudo install -d -o root -g root -m 0755 /opt/shaka
 sudo install -o root -g root -m 0644 "$stage/opentelemetry-javaagent.jar" /opt/shaka/opentelemetry-javaagent.jar
 REMOTE_PREFLIGHT
@@ -277,6 +279,10 @@ if [[ ! -f "$obs_env_file" ]]; then
   exit 1
 fi
 printf 'EC2_INSTANCE_ID="%s"\n' "$instance_id" | sudo tee -a "$obs_env_file" >/dev/null
+# scp does not preserve mode without -p, so the remote file ends up at the user's
+# umask (typically 0644 on Ubuntu) and the next validation step would abort. Lock
+# down to 0600 explicitly before validation.
+sudo chmod 600 "$obs_env_file"
 sudo python3 - "$obs_env_file" <<'PY'
 import os
 import stat
@@ -365,6 +371,8 @@ if agent_option not in existing_java_tool_options:
 else:
     keys['JAVA_TOOL_OPTIONS'] = existing_java_tool_options
 for key, value in keys.items():
+    if ' ' in value:
+        value = f'"{value}"'
     lines.append(f'{key}={value}')
 path.write_text('\n'.join(lines) + '\n', encoding='utf-8')
 PY

@@ -94,5 +94,18 @@ class AppProductionDeployTest(unittest.TestCase):
         self.assertIn("/opt/shaka/current.jar", systemd_text)
         self.assertIn("User=ubuntu", systemd_text)
 
+    def test_nginx_no_longer_terminates_tls(self):
+        nginx_text = (ROOT / "deploy" / "nginx" / "shaka-server.conf").read_text(encoding="utf-8")
+        self.assertNotIn("ssl_certificate", nginx_text)
+        self.assertNotIn("listen 443", nginx_text)
+        self.assertNotIn("letsencrypt", nginx_text.lower())
+        self.assertIn("listen 80;", nginx_text)
+        self.assertIn("set_real_ip_from 172.31.0.0/16;", nginx_text)
+
+    def test_nginx_keeps_actuator_lockdown(self):
+        nginx_text = (ROOT / "deploy" / "nginx" / "shaka-server.conf").read_text(encoding="utf-8")
+        self.assertIn("location = /actuator/prometheus { deny all; return 403; }", nginx_text)
+        self.assertIn("location /actuator/ { deny all; return 403; }", nginx_text)
+
 if __name__ == "__main__":
     unittest.main()

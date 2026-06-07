@@ -1,7 +1,7 @@
 variable "aws_region" {
-  description = "AWS region for Shaka production infrastructure."
+  description = "AWS region for Shaka production infrastructure. Workload region is ap-southeast-2; Terraform state backend lives in ap-northeast-2 separately."
   type        = string
-  default     = "ap-northeast-2"
+  default     = "ap-southeast-2"
 }
 
 variable "environment" {
@@ -80,5 +80,30 @@ variable "db_instance_class" {
   validation {
     condition     = contains(["db.t4g.micro", "db.t3.micro"], var.db_instance_class)
     error_message = "Use db.t4g.micro by default, or db.t3.micro as the documented fallback."
+  }
+}
+
+variable "alb_public_subnet_ids" {
+  description = "Public subnet IDs in two different availability zones for the production ALB. The existing app EC2's subnet should be one of them."
+  type        = list(string)
+
+  validation {
+    condition     = length(var.alb_public_subnet_ids) >= 2
+    error_message = "Provide at least two public subnet IDs across different availability zones for the ALB."
+  }
+
+  validation {
+    condition     = alltrue([for id in var.alb_public_subnet_ids : can(regex("^subnet-[0-9a-f]+$", id))])
+    error_message = "Each ALB subnet ID must look like subnet-0123456789abcdef0."
+  }
+}
+
+variable "alb_domain_name" {
+  description = "Primary DNS name served by the production ALB (used for the ACM certificate). For Shaka this is shaka.dannawagyu.com."
+  type        = string
+
+  validation {
+    condition     = can(regex("^[a-z0-9.-]+\\.[a-z]{2,}$", var.alb_domain_name))
+    error_message = "alb_domain_name must be a valid lowercase fully qualified domain name such as shaka.dannawagyu.com."
   }
 }
