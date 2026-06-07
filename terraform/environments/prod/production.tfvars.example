@@ -1,7 +1,7 @@
 # Example only. Copy to production.local.tfvars and fill real values locally.
 # production.local.tfvars is ignored by git. Do not commit real secrets.
 
-aws_region  = "ap-northeast-2"
+aws_region  = "ap-southeast-2"
 environment = "prod"
 
 # Existing fixed-IP/domain Shaka production app host.
@@ -11,8 +11,13 @@ existing_app_security_group_id = "sg-xxxxxxxxxxxxxxxxx"
 
 # Terraform-managed private RDS subnets inside the existing app VPC.
 # Choose non-overlapping CIDRs within the existing VPC CIDR.
-availability_zones   = ["ap-northeast-2a", "ap-northeast-2c"]
-private_subnet_cidrs = ["10.42.10.0/24", "10.42.11.0/24"]
+availability_zones   = ["ap-southeast-2a", "ap-southeast-2c"]
+private_subnet_cidrs = ["172.31.100.0/24", "172.31.101.0/24"]
+
+# Production ALB inputs. The two public subnets must live in different AZs in the existing VPC,
+# and one of them should match the AZ of the existing app EC2 to keep ALB->EC2 traffic same-AZ.
+alb_public_subnet_ids = ["subnet-xxxxxxxxxxxxxxxxx", "subnet-yyyyyyyyyyyyyyyyy"]
+alb_domain_name       = "shaka.dannawagyu.com"
 
 # RDS bootstrap credentials. Keep these in local ignored files or GitHub production secrets.
 database_name     = "shaka"
