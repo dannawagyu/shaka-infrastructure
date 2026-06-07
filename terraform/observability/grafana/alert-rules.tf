@@ -8,6 +8,13 @@ locals {
     deployment_environment = var.environment
     managed_by             = "terraform"
   }
+
+  shaka_phase1_rds_alert_labels = {
+    service_name           = "shaka-rds"
+    deployment_environment = var.environment
+    managed_by             = "terraform"
+    rollout_phase          = "phase1-membership-migration"
+  }
 }
 
 resource "grafana_rule_group" "shaka_rfc_0010" {
@@ -129,6 +136,148 @@ resource "grafana_rule_group" "shaka_rfc_0010" {
           expression = "B"
           conditions = [{
             evaluator = { type = "gt", params = [0] }
+            operator  = { type = "and" }
+            query     = { params = ["B"] }
+            reducer   = { type = "last" }
+            type      = "query"
+          }]
+          refId = "C"
+        })
+      }
+
+      notification_settings {
+        contact_point = var.notification_contact_point_name
+      }
+    }
+  }
+}
+
+resource "grafana_rule_group" "shaka_phase1_rds_migration_window" {
+  name             = "Shaka Phase 1 RDS migration window alerts"
+  folder_uid       = grafana_folder.shaka_observability.uid
+  interval_seconds = var.alert_evaluation_interval_seconds
+
+  dynamic "rule" {
+    for_each = {
+      phase1_rds_cpu_high = {
+        title      = "Shaka Phase 1 RDS CPU high"
+        metric     = "CPUUtilization"
+        statistic  = "Average"
+        evaluator  = "gt"
+        threshold  = 80
+        unit       = "percent"
+        summary    = "RDS CPU is high during the Phase 1 group_member migration window."
+        expression = "CPUUtilization average is above 80%."
+      }
+      phase1_rds_connections_high = {
+        title      = "Shaka Phase 1 RDS connections high"
+        metric     = "DatabaseConnections"
+        statistic  = "Average"
+        evaluator  = "gt"
+        threshold  = 80
+        unit       = "count"
+        summary    = "RDS database connections are elevated during the Phase 1 group_member migration window."
+        expression = "DatabaseConnections average is above 80."
+      }
+      phase1_rds_storage_low = {
+        title      = "Shaka Phase 1 RDS free storage low"
+        metric     = "FreeStorageSpace"
+        statistic  = "Minimum"
+        evaluator  = "lt"
+        threshold  = 10737418240
+        unit       = "bytes"
+        summary    = "RDS free storage is below 10 GiB during the Phase 1 group_member migration window."
+        expression = "FreeStorageSpace minimum is below 10 GiB."
+      }
+      phase1_rds_write_latency_high = {
+        title      = "Shaka Phase 1 RDS write latency high"
+        metric     = "WriteLatency"
+        statistic  = "Average"
+        evaluator  = "gt"
+        threshold  = 0.1
+        unit       = "seconds"
+        summary    = "RDS write latency is high during the Phase 1 group_member migration window."
+        expression = "WriteLatency average is above 100 ms."
+      }
+    }
+    content {
+      uid            = rule.key
+      name           = rule.value.title
+      condition      = "C"
+      for            = "5m"
+      no_data_state  = "OK"
+      exec_err_state = "Error"
+      labels         = local.shaka_phase1_rds_alert_labels
+
+      annotations = {
+        summary     = rule.value.summary
+        description = rule.value.expression
+        runbook_url = var.runbook_base_url
+      }
+
+      data {
+        ref_id = "A"
+
+        relative_time_range {
+          from = 600
+          to   = 0
+        }
+
+        datasource_uid = var.cloudwatch_datasource_uid
+        model = jsonencode({
+          datasource = {
+            type = "cloudwatch"
+            uid  = var.cloudwatch_datasource_uid
+          }
+          dimensions = {
+            DBInstanceIdentifier = "*"
+          }
+          expression    = ""
+          id            = "A"
+          intervalMs    = 60000
+          maxDataPoints = 43200
+          metricName    = rule.value.metric
+          namespace     = "AWS/RDS"
+          period        = "60"
+          queryMode     = "Metrics"
+          refId         = "A"
+          region        = "ap-southeast-2"
+          statistic     = rule.value.statistic
+          unit          = rule.value.unit
+        })
+      }
+
+      data {
+        ref_id = "B"
+
+        relative_time_range {
+          from = 600
+          to   = 0
+        }
+
+        datasource_uid = "__expr__"
+        model = jsonencode({
+          type       = "reduce"
+          expression = "A"
+          reducer    = "last"
+          refId      = "B"
+        })
+      }
+
+      data {
+        ref_id = "C"
+
+        relative_time_range {
+          from = 600
+          to   = 0
+        }
+
+        datasource_uid = "__expr__"
+        model = jsonencode({
+          type       = "threshold"
+          expression = "B"
+          conditions = [{
+            evaluator = { type = rule.value.evaluator, params = [rule.value.threshold] }
             operator  = { type = "and" }
             query     = { params = ["B"] }
             reducer   = { type = "last" }
