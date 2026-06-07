@@ -47,7 +47,7 @@ class GitHubActionsProductionTest(unittest.TestCase):
         self.assertIn("TF_VAR_grafana_auth: ${{ secrets.TF_VAR_GRAFANA_AUTH }}", text)
         self.assertIn("TF_VAR_prometheus_datasource_uid: ${{ vars.GRAFANA_PROMETHEUS_DATASOURCE_UID }}", text)
         self.assertIn("TF_VAR_cloudwatch_datasource_uid: ${{ vars.GRAFANA_CLOUDWATCH_DATASOURCE_UID }}", text)
-        self.assertIn("TF_VAR_cloudwatch_region: ${{ vars.AWS_REGION || 'ap-northeast-2' }}", text)
+        self.assertIn("TF_VAR_cloudwatch_region: ${{ vars.AWS_REGION || 'ap-southeast-2' }}", text)
         self.assertIn("TF_VAR_loki_datasource_uid: ${{ vars.GRAFANA_LOKI_DATASOURCE_UID }}", text)
         self.assertIn("TF_VAR_tempo_datasource_uid: ${{ vars.GRAFANA_TEMPO_DATASOURCE_UID }}", text)
 
@@ -57,7 +57,7 @@ class GitHubActionsProductionTest(unittest.TestCase):
             "TF_VAR_grafana_auth: ${{ secrets.TF_VAR_GRAFANA_AUTH }}",
             "TF_VAR_prometheus_datasource_uid: ${{ vars.GRAFANA_PROMETHEUS_DATASOURCE_UID }}",
             "TF_VAR_cloudwatch_datasource_uid: ${{ vars.GRAFANA_CLOUDWATCH_DATASOURCE_UID }}",
-            "TF_VAR_cloudwatch_region: ${{ vars.AWS_REGION || 'ap-northeast-2' }}",
+            "TF_VAR_cloudwatch_region: ${{ vars.AWS_REGION || 'ap-southeast-2' }}",
             "TF_VAR_loki_datasource_uid: ${{ vars.GRAFANA_LOKI_DATASOURCE_UID }}",
             "TF_VAR_tempo_datasource_uid: ${{ vars.GRAFANA_TEMPO_DATASOURCE_UID }}",
         ]:

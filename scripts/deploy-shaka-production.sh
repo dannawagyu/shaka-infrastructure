@@ -365,6 +365,8 @@ if agent_option not in existing_java_tool_options:
 else:
     keys['JAVA_TOOL_OPTIONS'] = existing_java_tool_options
 for key, value in keys.items():
+    if ' ' in value:
+        value = f'"{value}"'
     lines.append(f'{key}={value}')
 path.write_text('\n'.join(lines) + '\n', encoding='utf-8')
 PY
