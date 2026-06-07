@@ -21,7 +21,7 @@ variable "cloudwatch_datasource_uid" {
 }
 
 variable "cloudwatch_region" {
-  description = "AWS region selected by default on the Shaka Amazon RDS dashboard. Pass the production AWS_REGION so CloudWatch queries do not fall back to the datasource default region."
+  description = "AWS region used by the Grafana CloudWatch datasource for the RDS dashboard and Phase 1 migration-window alerts. Pass the production AWS_REGION so CloudWatch queries do not fall back to the datasource default region."
   type        = string
   default     = "ap-southeast-2"
 }

@@ -165,7 +165,7 @@ resource "grafana_rule_group" "shaka_phase1_rds_migration_window" {
         statistic  = "Average"
         evaluator  = "gt"
         threshold  = 80
-        unit       = "percent"
+        unit       = "Percent"
         summary    = "RDS CPU is high during the Phase 1 group_member migration window."
         expression = "CPUUtilization average is above 80%."
       }
@@ -175,7 +175,7 @@ resource "grafana_rule_group" "shaka_phase1_rds_migration_window" {
         statistic  = "Average"
         evaluator  = "gt"
         threshold  = 80
-        unit       = "count"
+        unit       = "Count"
         summary    = "RDS database connections are elevated during the Phase 1 group_member migration window."
         expression = "DatabaseConnections average is above 80."
       }
@@ -185,7 +185,7 @@ resource "grafana_rule_group" "shaka_phase1_rds_migration_window" {
         statistic  = "Minimum"
         evaluator  = "lt"
         threshold  = 10737418240
-        unit       = "bytes"
+        unit       = "Bytes"
         summary    = "RDS free storage is below 10 GiB during the Phase 1 group_member migration window."
         expression = "FreeStorageSpace minimum is below 10 GiB."
       }
@@ -195,7 +195,7 @@ resource "grafana_rule_group" "shaka_phase1_rds_migration_window" {
         statistic  = "Average"
         evaluator  = "gt"
         threshold  = 0.1
-        unit       = "seconds"
+        unit       = "Seconds"
         summary    = "RDS write latency is high during the Phase 1 group_member migration window."
         expression = "WriteLatency average is above 100 ms."
       }
@@ -205,7 +205,7 @@ resource "grafana_rule_group" "shaka_phase1_rds_migration_window" {
       name           = rule.value.title
       condition      = "C"
       for            = "5m"
-      no_data_state  = "OK"
+      no_data_state  = "Alerting"
       exec_err_state = "Error"
       labels         = local.shaka_phase1_rds_alert_labels
 
@@ -241,7 +241,7 @@ resource "grafana_rule_group" "shaka_phase1_rds_migration_window" {
           period        = "60"
           queryMode     = "Metrics"
           refId         = "A"
-          region        = "ap-southeast-2"
+          region        = var.cloudwatch_region
           statistic     = rule.value.statistic
           unit          = rule.value.unit
         })

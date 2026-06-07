@@ -104,17 +104,17 @@ reject_pattern() {
   fi
 }
 
-require_pattern "$migration_sql" 'CREATE[[:space:]]+TABLE[[:space:]]+`?group_member`?' "migration must create group_member"
-require_pattern "$migration_sql" 'ALTER[[:space:]]+TABLE[[:space:]]+`?group`?' "migration must add group metadata additively"
-require_pattern "$migration_sql" 'INSERT[[:space:]]+INTO[[:space:]]+`?group_member`?' "migration must backfill group_member"
-require_pattern "$migration_sql" 'CREATE[[:space:]]+VIEW[[:space:]]+`?v_group_member_drift`?' "migration must expose drift check view"
+require_pattern "$migration_sql" 'CREATE[[:space:]]+TABLE[[:space:]]+(`group_member`|group_member([[:space:](]|$))' "migration must create group_member"
+require_pattern "$migration_sql" 'ALTER[[:space:]]+TABLE[[:space:]]+(`group`|group([[:space:]]|$))' "migration must add group metadata additively"
+require_pattern "$migration_sql" 'INSERT[[:space:]]+INTO[[:space:]]+(`group_member`|group_member([[:space:](]|$))' "migration must backfill group_member"
+require_pattern "$migration_sql" 'CREATE[[:space:]]+VIEW[[:space:]]+(`v_group_member_drift`|v_group_member_drift([[:space:]]|$))' "migration must expose drift check view"
 require_pattern "$migration_sql" 'FOREIGN[[:space:]]+KEY' "migration must include membership foreign keys"
 
 for file in "$migration_sql" "$drift_sql" "$repair_sql"; do
   reject_pattern "$file" 'DROP[[:space:]]+(TABLE|DATABASE)' "DROP table/database is forbidden"
-  reject_pattern "$file" 'DROP[[:space:]]+COLUMN[[:space:]]+`?group_id`?' "legacy user.group_id cleanup is Phase 2+ and forbidden"
+  reject_pattern "$file" 'DROP[[:space:]]+COLUMN[[:space:]]+(`group_id`|group_id([[:space:],;]|$))' "legacy user.group_id cleanup is Phase 2+ and forbidden"
   reject_pattern "$file" 'TRUNCATE[[:space:]]+TABLE' "TRUNCATE is forbidden"
-  reject_pattern "$file" 'DELETE[[:space:]]+FROM[[:space:]]+`?user`?' "deleting users is forbidden"
+  reject_pattern "$file" 'DELETE[[:space:]]+FROM[[:space:]]+(`user`|user([[:space:];]|$))' "deleting users is forbidden"
   reject_pattern "$file" 'terraform[[:space:]]+apply|production[[:space:]]+apply' "production apply is forbidden"
 done
 

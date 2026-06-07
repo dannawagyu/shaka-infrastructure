@@ -99,6 +99,26 @@ class Phase1MigrationReadinessTest(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("destructive SQL", result.stderr)
 
+    def test_readiness_script_does_not_treat_group_member_prefix_as_group_metadata(self) -> None:
+        migration = self.write_sql_fixture("""
+        ALTER TABLE `group_member` ADD COLUMN `owner_id` BIGINT NULL;
+        CREATE TABLE `group_member` (
+          `id` BIGINT NOT NULL AUTO_INCREMENT,
+          `group_id` BIGINT NOT NULL,
+          `user_id` BIGINT NOT NULL,
+          PRIMARY KEY (`id`),
+          CONSTRAINT `fk_group_member_group` FOREIGN KEY (`group_id`) REFERENCES `group` (`id`)
+        );
+        INSERT INTO `group_member` (`group_id`, `user_id`, `role`, `status`)
+        SELECT u.`group_id`, u.`id`, 'MEMBER', 'ACTIVE' FROM `user` u;
+        CREATE VIEW `v_group_member_drift` AS SELECT 1;
+        """)
+
+        result = self.run_script(migration)
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("migration must add group metadata", result.stderr)
+
     def test_non_offline_staging_handoff_requires_backup_restore_and_owner_refs(self) -> None:
         migration = self.write_sql_fixture()
 
@@ -138,7 +158,13 @@ class Phase1MigrationReadinessTest(unittest.TestCase):
             "START TRANSACTION",
             "INSERT INTO `group_member`",
             "ON DUPLICATE KEY UPDATE",
+            "LEFT JOIN `group`",
+            "`group`.`id` IS NULL",
             "status` = 'LEFT'",
+            "post_repair_missing_active_membership",
+            "post_repair_legacy_group_mismatch",
+            "post_repair_orphan_active_membership",
+            "post_repair_owner_without_active_membership",
             "ROLLBACK",
         ]:
             self.assertIn(phrase, repair)
@@ -160,6 +186,8 @@ class Phase1MigrationReadinessTest(unittest.TestCase):
         ]:
             self.assertIn(metric, dashboard)
         self.assertIn("var.cloudwatch_datasource_uid", alerts)
+        self.assertIn("var.cloudwatch_region", alerts)
+        self.assertIn('no_data_state  = "Alerting"', alerts)
         for alert_uid in PHASE1_RDS_ALERT_UIDS:
             self.assertIn(alert_uid, alerts)
         for metric in [
@@ -169,6 +197,13 @@ class Phase1MigrationReadinessTest(unittest.TestCase):
             "WriteLatency",
         ]:
             self.assertIn(metric, alerts)
+        for unit in [
+            'unit       = "Percent"',
+            'unit       = "Count"',
+            'unit       = "Bytes"',
+            'unit       = "Seconds"',
+        ]:
+            self.assertIn(unit, alerts)
         self.assertIn('DBInstanceIdentifier = "*"', alerts)
         self.assertNotIn("terraform apply", alerts)
 
