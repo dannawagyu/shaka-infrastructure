@@ -192,6 +192,7 @@ def main() -> int:
     assert_contains(alb, r'data\s+"aws_caller_identity"\s+"current"', "ALB module must look up the current AWS account ID to scope log delivery")
     assert_contains(alb, r'AWSLogs/\$\{data\.aws_caller_identity\.current\.account_id\}', "ALB access log bucket policy must restrict the resource path to this account's logs")
     assert_contains(alb, r'aws:SourceArn', "ALB access log bucket policy must scope to load balancers in this account+region using aws:SourceArn (AWS best practice for ALB)")
+    assert_contains(alb, r's3:GetBucketAcl', "ALB access log bucket policy must allow s3:GetBucketAcl on the bucket for the log delivery service principal (belt-and-suspenders against ACL check failures)")
     assert_contains(alb, r'resource\s+"aws_lb_target_group"\s+"shaka_app".*health_check\s*\{[^}]*path\s*=\s*"/actuator/health"[^}]*matcher\s*=\s*"200"', "ALB target group health check must hit /actuator/health and match HTTP 200")
     assert_contains(alb, r'resource\s+"aws_lb_listener"\s+"http_redirect".*type\s*=\s*"redirect".*status_code\s*=\s*"HTTP_301"', "HTTP listener must redirect to HTTPS with 301")
     assert_contains(alb, r'resource\s+"aws_lb_listener"\s+"https".*ssl_policy\s*=\s*"ELBSecurityPolicy-(TLS13|TLS-1-2)[^"]*"', "HTTPS listener must use a modern TLS 1.2+/1.3 policy")

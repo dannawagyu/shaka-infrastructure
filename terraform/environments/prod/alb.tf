@@ -167,6 +167,29 @@ data "aws_iam_policy_document" "alb_access_logs" {
     }
   }
 
+  # Belt-and-suspenders: AWS docs for the modern principal only require s3:PutObject
+  # (BucketOwnerEnforced makes ACL checks moot), but legacy ELB log delivery flows
+  # historically required s3:GetBucketAcl. Granting it is harmless and removes a
+  # whole class of "Access Denied" failure modes during ALB log enablement.
+  statement {
+    sid    = "AllowELBLogDeliveryAclCheck"
+    effect = "Allow"
+
+    principals {
+      type        = "Service"
+      identifiers = ["logdelivery.elasticloadbalancing.amazonaws.com"]
+    }
+
+    actions   = ["s3:GetBucketAcl"]
+    resources = [aws_s3_bucket.alb_access_logs.arn]
+
+    condition {
+      test     = "ArnLike"
+      variable = "aws:SourceArn"
+      values   = ["arn:aws:elasticloadbalancing:${var.aws_region}:${data.aws_caller_identity.current.account_id}:loadbalancer/*"]
+    }
+  }
+
   statement {
     sid    = "DenyInsecureTransport"
     effect = "Deny"
