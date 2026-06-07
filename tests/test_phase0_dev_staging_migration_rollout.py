@@ -2,7 +2,7 @@ import unittest
 from pathlib import Path
 
 
-RUNBOOK = Path("docs/operations/phase0-dev-staging-migration-rollout.md")
+RUNBOOK = Path(__file__).resolve().parents[1] / "docs/operations/phase0-dev-staging-migration-rollout.md"
 
 
 class Phase0DevStagingMigrationRolloutTest(unittest.TestCase):

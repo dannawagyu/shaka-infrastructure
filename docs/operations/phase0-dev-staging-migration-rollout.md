@@ -39,10 +39,10 @@ Forbidden in Phase 0:
 Before a dev/staging rehearsal, capture:
 
 - current application version and commit SHA,
-- database endpoint and schema snapshot identifier,
+- sanitized database endpoint reference and schema snapshot identifier recorded only in an access-controlled release checklist,
 - app deploy artifact or image reference,
 - rollback command owner and communication channel,
-- timestamped backup/export evidence.
+- timestamped backup/export evidence recorded only in an access-controlled release checklist.
 
 Do not store secrets, database credentials, Terraform state, or raw dumps in git.
 
