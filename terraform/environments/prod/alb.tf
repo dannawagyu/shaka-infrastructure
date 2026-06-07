@@ -142,24 +142,28 @@ resource "aws_s3_bucket_lifecycle_configuration" "alb_access_logs" {
 data "aws_caller_identity" "current" {}
 
 data "aws_iam_policy_document" "alb_access_logs" {
-  # ALB access log delivery uses the modern service principal so aws:SourceAccount works.
-  # The legacy ELB account-id principal does not populate aws:SourceAccount and would deny every write.
+  # ALB access logs to S3 require the ELB-specific log-delivery service principal
+  # (logdelivery.elasticloadbalancing.amazonaws.com). delivery.logs.amazonaws.com is
+  # the CloudWatch Logs / VPC Flow Logs / NLB principal and is rejected for ALB.
+  # The condition scopes to load balancers in this account+region using aws:SourceArn,
+  # which is the AWS-documented best practice for ALB access log buckets.
+  # See https://docs.aws.amazon.com/elasticloadbalancing/latest/application/enable-access-logging.html
   statement {
     sid    = "AllowELBLogDelivery"
     effect = "Allow"
 
     principals {
       type        = "Service"
-      identifiers = ["delivery.logs.amazonaws.com"]
+      identifiers = ["logdelivery.elasticloadbalancing.amazonaws.com"]
     }
 
     actions   = ["s3:PutObject"]
     resources = ["${aws_s3_bucket.alb_access_logs.arn}/${local.alb_logs_prefix}/AWSLogs/${data.aws_caller_identity.current.account_id}/*"]
 
     condition {
-      test     = "StringEquals"
-      variable = "aws:SourceAccount"
-      values   = [data.aws_caller_identity.current.account_id]
+      test     = "ArnLike"
+      variable = "aws:SourceArn"
+      values   = ["arn:aws:elasticloadbalancing:${var.aws_region}:${data.aws_caller_identity.current.account_id}:loadbalancer/*"]
     }
   }
 
