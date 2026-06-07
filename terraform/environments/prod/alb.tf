@@ -3,10 +3,6 @@ locals {
   alb_target_group_name  = "${local.name_prefix}-app"
   alb_access_logs_bucket = "dannawagyu-shaka-prod-alb-access-logs"
   alb_logs_prefix        = "alb"
-
-  # ELB account principal that writes access logs in ap-southeast-2.
-  # See https://docs.aws.amazon.com/elasticloadbalancing/latest/application/load-balancer-access-logs.html
-  alb_log_delivery_account_id = "783225319266"
 }
 
 resource "aws_security_group" "alb" {
@@ -146,13 +142,15 @@ resource "aws_s3_bucket_lifecycle_configuration" "alb_access_logs" {
 data "aws_caller_identity" "current" {}
 
 data "aws_iam_policy_document" "alb_access_logs" {
+  # ALB access log delivery uses the modern service principal so aws:SourceAccount works.
+  # The legacy ELB account-id principal does not populate aws:SourceAccount and would deny every write.
   statement {
     sid    = "AllowELBLogDelivery"
     effect = "Allow"
 
     principals {
-      type        = "AWS"
-      identifiers = ["arn:aws:iam::${local.alb_log_delivery_account_id}:root"]
+      type        = "Service"
+      identifiers = ["delivery.logs.amazonaws.com"]
     }
 
     actions   = ["s3:PutObject"]
@@ -384,9 +382,12 @@ resource "aws_lb_listener_rule" "unauthenticated_api_401" {
   }
 }
 
+# OPTIONS preflight must evaluate before the 401 fallback (priority 401), otherwise
+# CORS preflight requests against /api/v1/* — which carry no Authorization header —
+# would match unauthenticated_api_401 and break the browser preflight handshake.
 resource "aws_lb_listener_rule" "forward_options_preflight" {
   listener_arn = aws_lb_listener.https.arn
-  priority     = 500
+  priority     = 350
 
   action {
     type             = "forward"
