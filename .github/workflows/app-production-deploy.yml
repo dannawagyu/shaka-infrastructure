@@ -40,8 +40,10 @@ jobs:
     outputs:
       release_version: ${{ steps.version.outputs.release_version }}
     steps:
-      - name: Validate trusted server ref
+      - name: Validate trusted server ref and deploy key
         shell: bash
+        env:
+          SHAKA_SERVER_DEPLOY_KEY: ${{ secrets.SHAKA_SERVER_DEPLOY_KEY }}
         run: |
           set -euo pipefail
           ref="${{ inputs.server_ref }}"
@@ -54,6 +56,11 @@ jobs:
               fi
               ;;
           esac
+          if [[ -z "${SHAKA_SERVER_DEPLOY_KEY}" ]]; then
+            echo "SHAKA_SERVER_DEPLOY_KEY repository secret is required (read-only deploy key registered on dannawagyu/shaka-server-spring)." >&2
+            echo "This build job runs without environment context, so the secret must be a repository-level secret, not a production-environment secret." >&2
+            exit 1
+          fi
 
       - name: Check out server repository
         uses: actions/checkout@v4
@@ -61,7 +68,11 @@ jobs:
           repository: dannawagyu/shaka-server-spring
           ref: ${{ inputs.server_ref }}
           path: server
-          token: ${{ secrets.SHAKA_SERVER_REPO_TOKEN || github.token }}
+          # Read-only deploy key scoped to dannawagyu/shaka-server-spring. The default
+          # GITHUB_TOKEN cannot reach cross-repo, and the dannawagyu org disallows
+          # fine-grained PATs accessing org-owned repos, so a deploy key is the
+          # least-privilege option available.
+          ssh-key: ${{ secrets.SHAKA_SERVER_DEPLOY_KEY }}
 
       - name: Set up Java 21
         uses: actions/setup-java@v4
