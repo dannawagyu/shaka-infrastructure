@@ -14,25 +14,6 @@ apt-get install -y alloy
 
 install -d -m 0755 /opt/shaka/releases /etc/shaka /etc/alloy /etc/systemd/system/alloy.service.d /usr/local/sbin
 
-cat >/etc/systemd/system/shaka-server.service <<'UNIT'
-[Unit]
-Description=Shaka Spring Boot API
-After=network-online.target
-Wants=network-online.target
-
-[Service]
-User=ubuntu
-WorkingDirectory=/opt/shaka
-EnvironmentFile=/etc/shaka/env
-ExecStart=/usr/bin/java -jar /opt/shaka/current.jar --spring.profiles.active=prod
-Restart=always
-RestartSec=10
-SuccessExitStatus=143
-
-[Install]
-WantedBy=multi-user.target
-UNIT
-
 IMDS_TOKEN_FILE=/tmp/shaka-imds-token
 INSTANCE_ID_FILE=/tmp/shaka-instance-id
 if curl -fsS -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600" -o "$IMDS_TOKEN_FILE"; then
@@ -107,37 +88,6 @@ ENV
 chmod 0644 /etc/alloy/grafana-cloud.env.example
 
 cat >/etc/alloy/config.alloy <<'ALLOY'
-prometheus.scrape "shaka_server" {
-  targets = [{
-    __address__ = "127.0.0.1:8080",
-    job         = "shaka-server",
-    service     = "shaka-server",
-    env         = "${environment}",
-  }]
-  metrics_path     = "/actuator/prometheus"
-  scrape_interval  = "30s"
-  forward_to       = [prometheus.relabel.shaka_server_resource_labels.receiver]
-}
-
-prometheus.relabel "shaka_server_resource_labels" {
-  forward_to = [prometheus.remote_write.grafana_cloud.receiver]
-
-  rule {
-    target_label = "service_name"
-    replacement  = "shaka-server"
-  }
-
-  rule {
-    target_label = "deployment_environment"
-    replacement  = "${environment}"
-  }
-
-  rule {
-    target_label = "service_instance_id"
-    replacement  = sys.env("EC2_INSTANCE_ID")
-  }
-}
-
 prometheus.exporter.unix "shaka_host" {
   # Keep default unix collectors enabled and add systemd service state metrics.
   # This Alloy version uses enable_collectors instead of unsupported enabled_collectors.
@@ -196,6 +146,5 @@ prometheus.remote_write "grafana_cloud" {
 ALLOY
 
 systemctl daemon-reload
-systemctl enable shaka-server || true
 systemctl enable --now nginx || true
 systemctl enable --now alloy || true

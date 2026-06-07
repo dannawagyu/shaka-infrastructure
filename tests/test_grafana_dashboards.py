@@ -106,7 +106,7 @@ class GrafanaDashboardRenderingTest(unittest.TestCase):
         self.assertEqual(target["legendFormat"], "{{http_request_method}} {{http_route}} 401")
         self.assertIn("Each color/series is one method + route-template 401 rate", panel["description"])
 
-    def test_overview_prometheus_queries_match_otlp_metric_and_label_names(self) -> None:
+    def test_overview_prometheus_queries_match_runtime_metric_and_label_names(self) -> None:
         dashboard = self.rendered_dashboard()
         prometheus_exprs = []
         for panel in iter_panels(dashboard):
@@ -122,22 +122,47 @@ class GrafanaDashboardRenderingTest(unittest.TestCase):
         self.assertIn("http_route", combined)
         self.assertIn("jvm_memory_limit_bytes", combined)
         self.assertIn("jvm_memory_type", combined)
-        self.assertIn("system_cpu_time_seconds_total", combined)
-        self.assertIn("system_memory_usage_bytes", combined)
-        self.assertIn("system_filesystem_usage_bytes", combined)
-        self.assertIn("system_filesystem_limit_bytes", combined)
+        self.assertIn("node_cpu_seconds_total", combined)
+        self.assertIn("node_memory_MemAvailable_bytes", combined)
+        self.assertIn("node_memory_MemTotal_bytes", combined)
+        self.assertIn("node_filesystem_size_bytes", combined)
+        self.assertIn("node_filesystem_avail_bytes", combined)
+        self.assertIn("node_systemd_unit_state", combined)
 
-        for legacy in [
+        for unsupported in [
             "up{job=",
             "http_server_requests_seconds_count",
             "status=~\"5..\"",
             "area=\"heap\"",
             "jvm_memory_max_bytes",
-            "node_cpu_seconds_total",
-            "node_memory_MemAvailable_bytes",
-            "node_filesystem_avail_bytes",
+            "system_cpu_time_seconds_total",
+            "system_memory_usage_bytes",
+            "system_filesystem_usage_bytes",
+            "system_filesystem_limit_bytes",
         ]:
-            self.assertNotIn(legacy, combined)
+            self.assertNotIn(unsupported, combined)
+
+    def test_dashboard_panel_ids_are_unique(self) -> None:
+        dashboard = self.rendered_dashboard()
+        panel_ids = [panel.get("id") for panel in iter_panels(dashboard)]
+        duplicated = sorted({panel_id for panel_id in panel_ids if panel_ids.count(panel_id) > 1})
+        self.assertEqual(duplicated, [])
+
+    def test_core_systemd_status_is_split_by_operator_service(self) -> None:
+        dashboard = self.rendered_dashboard()
+        expected_units = {
+            "Shaka server active": "shaka-server.service",
+            "Nginx active": "nginx.service",
+            "Alloy active": "alloy.service",
+        }
+
+        self.assertNotIn("Core systemd active", {panel.get("title") for panel in iter_panels(dashboard)})
+        for title, unit_name in expected_units.items():
+            panel = self.panel(title)
+            self.assertEqual(panel["type"], "stat")
+            self.assertEqual(panel["fieldConfig"]["defaults"]["mappings"][0]["options"]["1"]["text"], "ACTIVE")
+            self.assertIn(f'name="{unit_name}"', panel["targets"][0]["expr"])
+            self.assertIn("node_systemd_unit_state", panel["targets"][0]["expr"])
 
     def test_cloudwatch_is_only_used_by_rds_dashboard(self) -> None:
         overview = self.rendered_dashboard()

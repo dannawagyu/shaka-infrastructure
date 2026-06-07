@@ -55,6 +55,9 @@ class AppProductionDeployTest(unittest.TestCase):
         self.assertIn("/etc/nginx/conf.d/shaka-server.conf:shaka-server.conf", text)
         self.assertIn("/etc/alloy/config.alloy:config.alloy", text)
         self.assertIn("/etc/shaka/env:env", text)
+        self.assertIn('"$(basename "$OBS_ENV_FILE")"', text)
+        self.assertIn('OBS_ENV_BASE="$3"', text)
+        self.assertIn("agent_option not in existing_java_tool_options", text)
         self.assertIn("ExecStartPre=", text)
         self.assertIn("missing required Alloy OTLP env keys", text)
         self.assertIn("placeholder value is not allowed", text)
@@ -100,9 +103,6 @@ class AppProductionDeployTest(unittest.TestCase):
         self.assertIn("set_real_ip_from 172.31.0.0/16;", nginx_text)
 
     def test_nginx_keeps_actuator_lockdown(self):
-        # The scanner-path blocklist was removed in favor of ALB default-deny.
-        # The /actuator/* lockdown is an application policy (Spring metrics must stay
-        # local-only for Alloy to scrape), so it stays regardless of ALB design.
         nginx_text = (ROOT / "deploy" / "nginx" / "shaka-server.conf").read_text(encoding="utf-8")
         self.assertIn("location = /actuator/prometheus { deny all; return 403; }", nginx_text)
         self.assertIn("location /actuator/ { deny all; return 403; }", nginx_text)

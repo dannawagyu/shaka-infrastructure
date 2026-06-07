@@ -20,6 +20,12 @@ variable "cloudwatch_datasource_uid" {
   type        = string
 }
 
+variable "cloudwatch_region" {
+  description = "AWS region selected by default on the Shaka Amazon RDS dashboard. Pass the production AWS_REGION so CloudWatch queries do not fall back to the datasource default region."
+  type        = string
+  default     = "ap-southeast-2"
+}
+
 variable "loki_datasource_uid" {
   description = "Grafana datasource UID for the Grafana Cloud Loki datasource used by dashboard log panels. This is a datasource UID, not a token or endpoint."
   type        = string
