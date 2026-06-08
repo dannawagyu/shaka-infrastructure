@@ -98,22 +98,20 @@ class GrafanaAlertingScaffoldTest(unittest.TestCase):
         tf = self.read_all_tf()
         self.assertIn("WagyuShark/shaka-wiki", tf)
 
-    def test_otlp_alloy_config_labels_match_alert_queries(self) -> None:
-        # Host-level signals (system_*) are not collected in this config: Grafana
-        # Alloy 1.x does not ship an otelcol.receiver.hostmetrics component, so
-        # the previous hostmetrics + processor.resource wiring never validated
-        # on the real binary. Host metrics will return in a follow-up via
-        # prometheus.exporter.unix + otelcol.receiver.prometheus, with alert
-        # queries migrated from system_* to node_*. For now, this test only
-        # asserts the OTLP-from-app pipeline that Alloy actually accepts.
+    def test_otlp_alloy_pipeline_uses_only_supported_alloy_components(self) -> None:
+        # Host-level signals (system_*) are not collected in this config: the
+        # OTel hostmetrics receiver is not packaged as an Alloy component and
+        # neither is the OTel resource processor. Host metrics will return in
+        # a follow-up via prometheus.exporter.unix + otelcol.receiver.prometheus,
+        # with alert queries migrated from system_* to node_*. service.name and
+        # deployment.environment are set by the Java agent on every OTLP signal,
+        # so the Alloy transform only needs to inject service.instance.id.
         alloy = ROOT / "deploy" / "grafana" / "alloy-otlp-config.alloy"
         self.assertTrue(alloy.is_file(), f"missing OTLP Alloy config: {alloy}")
         text = alloy.read_text()
         for phrase in [
             'otelcol.receiver.otlp "shaka"',
             'otelcol.processor.transform "shaka"',
-            'sys.env("OTEL_SERVICE_NAME")',
-            'sys.env("OTEL_DEPLOYMENT_ENVIRONMENT")',
             'sys.env("EC2_INSTANCE_ID")',
             'metrics = [otelcol.processor.transform.shaka.input]',
             'metrics = [otelcol.exporter.otlphttp.grafana_cloud.input]',
@@ -121,6 +119,8 @@ class GrafanaAlertingScaffoldTest(unittest.TestCase):
             self.assertIn(phrase, text, f"OTLP Alloy config missing phrase: {phrase}")
         self.assertNotIn("otelcol.receiver.hostmetrics", text)
         self.assertNotIn("otelcol.processor.resource", text)
+        self.assertNotIn('set(attributes["service.name"]', text)
+        self.assertNotIn('set(attributes["deployment.environment"]', text)
         self.assertNotIn("GRAFANA_PROMETHEUS_REMOTE_WRITE", text)
         self.assertNotIn("glc_", text)
 
