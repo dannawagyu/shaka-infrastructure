@@ -43,8 +43,8 @@
           },
           "editorMode": "code",
           "expr": "clamp_max(max({__name__=~\"target_info|jvm_memory_used_bytes|http_server_request_duration_seconds_count\",service_name=\"shaka-server\",deployment_environment=\"${environment}\"}), 1) or vector(0)",
-          "instant": false,
-          "range": true,
+          "instant": true,
+          "range": false,
           "refId": "A"
         }
       ],
@@ -86,7 +86,7 @@
       "options": {
         "reduceOptions": {
           "calcs": [
-            "lastNotNull"
+            "last"
           ],
           "fields": "",
           "values": false
@@ -96,7 +96,8 @@
         "graphMode": "none",
         "justifyMode": "auto",
         "textMode": "value",
-        "wideLayout": true
+        "wideLayout": true,
+        "noValue": "DOWN"
       },
       "description": "1 means OpenTelemetry app metrics for shaka-server/prod are reaching Grafana Cloud."
     },
@@ -122,8 +123,8 @@
           },
           "editorMode": "code",
           "expr": "clamp_max(max(node_cpu_seconds_total{service_name=\"shaka-host\",deployment_environment=\"${environment}\"}), 1) or vector(0)",
-          "instant": false,
-          "range": true,
+          "instant": true,
+          "range": false,
           "refId": "A"
         }
       ],
@@ -165,7 +166,7 @@
       "options": {
         "reduceOptions": {
           "calcs": [
-            "lastNotNull"
+            "last"
           ],
           "fields": "",
           "values": false
@@ -175,7 +176,8 @@
         "graphMode": "none",
         "justifyMode": "auto",
         "textMode": "value",
-        "wideLayout": true
+        "wideLayout": true,
+        "noValue": "DOWN"
       },
       "description": "1 means current Unix exporter host metrics for shaka-host/prod are reaching Grafana Cloud."
     },
@@ -201,8 +203,8 @@
           },
           "editorMode": "code",
           "expr": "count by (service_name, deployment_environment) ({__name__=~\"target_info|jvm_memory_used_bytes|http_server_request_duration_seconds_count|node_cpu_seconds_total\",service_name=~\"shaka-server|shaka-host\",deployment_environment=\"${environment}\"}) or (label_replace(label_replace(vector(0), \"service_name\", \"shaka-server\", \"__name__\", \".*\"), \"deployment_environment\", \"${environment}\", \"__name__\", \".*\") or label_replace(label_replace(vector(0), \"service_name\", \"shaka-host\", \"__name__\", \".*\"), \"deployment_environment\", \"${environment}\", \"__name__\", \".*\"))",
-          "instant": false,
-          "range": true,
+          "instant": true,
+          "range": false,
           "refId": "A",
           "legendFormat": "{{service_name}} {{deployment_environment}}"
         }
@@ -246,7 +248,7 @@
       "options": {
         "reduceOptions": {
           "calcs": [
-            "lastNotNull"
+            "last"
           ],
           "fields": "",
           "values": false
@@ -256,14 +258,15 @@
         "graphMode": "none",
         "justifyMode": "auto",
         "textMode": "value",
-        "wideLayout": true
+        "wideLayout": true,
+        "noValue": "MISSING"
       },
       "description": "Inventory of stable app and Unix-exporter host labels translated into Prometheus labels."
     },
     {
       "id": 4,
       "type": "stat",
-      "title": "Shaka server active",
+      "title": "Shaka app telemetry live",
       "gridPos": {
         "x": 12,
         "y": 0,
@@ -281,11 +284,11 @@
             "uid": "${prometheus_datasource_uid}"
           },
           "editorMode": "code",
-          "expr": "node_systemd_unit_state{service_name=\"shaka-host\",deployment_environment=\"${environment}\",name=\"shaka-server.service\",state=\"active\"} or on() (0 * max(node_cpu_seconds_total{service_name=\"shaka-host\",deployment_environment=\"${environment}\"}))",
-          "instant": false,
-          "range": true,
+          "expr": "clamp_max(sum(count_over_time(target_info{service_name=\"shaka-server\",deployment_environment=\"${environment}\"}[5m])), 1) or vector(0)",
+          "instant": true,
+          "range": false,
           "refId": "A",
-          "legendFormat": "Shaka server active"
+          "legendFormat": "App telemetry live"
         }
       ],
       "fieldConfig": {
@@ -313,7 +316,7 @@
                   "index": 0
                 },
                 "1": {
-                  "text": "ACTIVE",
+                  "text": "LIVE",
                   "color": "green",
                   "index": 1
                 }
@@ -326,7 +329,7 @@
       "options": {
         "reduceOptions": {
           "calcs": [
-            "lastNotNull"
+            "last"
           ],
           "fields": "",
           "values": false
@@ -336,14 +339,15 @@
         "graphMode": "none",
         "justifyMode": "auto",
         "textMode": "value",
-        "wideLayout": true
+        "wideLayout": true,
+        "noValue": "DOWN"
       },
-      "description": "shaka-server.service active state from Unix exporter systemd metrics; falls back to DOWN when only host heartbeat exists."
+      "description": "1 means current-window target_info telemetry for shaka-server/prod is reaching Grafana Cloud. This is app telemetry presence, not exact systemd state."
     },
     {
       "id": 18,
       "type": "stat",
-      "title": "Nginx active",
+      "title": "Backend HTTP traffic live",
       "gridPos": {
         "x": 16,
         "y": 0,
@@ -361,11 +365,11 @@
             "uid": "${prometheus_datasource_uid}"
           },
           "editorMode": "code",
-          "expr": "node_systemd_unit_state{service_name=\"shaka-host\",deployment_environment=\"${environment}\",name=\"nginx.service\",state=\"active\"} or on() (0 * max(node_cpu_seconds_total{service_name=\"shaka-host\",deployment_environment=\"${environment}\"}))",
-          "instant": false,
-          "range": true,
+          "expr": "clamp_max(sum(count_over_time(http_server_request_duration_seconds_count{service_name=\"shaka-server\",deployment_environment=\"${environment}\"}[5m])), 1) or vector(0)",
+          "instant": true,
+          "range": false,
           "refId": "A",
-          "legendFormat": "Nginx active"
+          "legendFormat": "Backend HTTP traffic live"
         }
       ],
       "fieldConfig": {
@@ -388,12 +392,12 @@
               "type": "value",
               "options": {
                 "0": {
-                  "text": "DOWN",
+                  "text": "NO TRAFFIC",
                   "color": "red",
                   "index": 0
                 },
                 "1": {
-                  "text": "ACTIVE",
+                  "text": "LIVE",
                   "color": "green",
                   "index": 1
                 }
@@ -406,7 +410,7 @@
       "options": {
         "reduceOptions": {
           "calcs": [
-            "lastNotNull"
+            "last"
           ],
           "fields": "",
           "values": false
@@ -416,14 +420,15 @@
         "graphMode": "none",
         "justifyMode": "auto",
         "textMode": "value",
-        "wideLayout": true
+        "wideLayout": true,
+        "noValue": "NO TRAFFIC"
       },
-      "description": "nginx.service active state from Unix exporter systemd metrics; falls back to DOWN when only host heartbeat exists."
+      "description": "1 means current-window backend HTTP request telemetry is reaching Grafana Cloud. This does not claim nginx.service systemd state."
     },
     {
       "id": 19,
       "type": "stat",
-      "title": "Alloy active",
+      "title": "Alloy OTLP pipeline live",
       "gridPos": {
         "x": 20,
         "y": 0,
@@ -441,11 +446,11 @@
             "uid": "${prometheus_datasource_uid}"
           },
           "editorMode": "code",
-          "expr": "node_systemd_unit_state{service_name=\"shaka-host\",deployment_environment=\"${environment}\",name=\"alloy.service\",state=\"active\"} or on() (0 * max(node_cpu_seconds_total{service_name=\"shaka-host\",deployment_environment=\"${environment}\"}))",
-          "instant": false,
-          "range": true,
+          "expr": "clamp_max(sum(count_over_time({__name__=~\"target_info|jvm_memory_used_bytes|http_server_request_duration_seconds_count\",service_name=\"shaka-server\",deployment_environment=\"${environment}\"}[5m])), 1) or vector(0)",
+          "instant": true,
+          "range": false,
           "refId": "A",
-          "legendFormat": "Alloy active"
+          "legendFormat": "Alloy OTLP pipeline live"
         }
       ],
       "fieldConfig": {
@@ -473,7 +478,7 @@
                   "index": 0
                 },
                 "1": {
-                  "text": "ACTIVE",
+                  "text": "LIVE",
                   "color": "green",
                   "index": 1
                 }
@@ -486,7 +491,7 @@
       "options": {
         "reduceOptions": {
           "calcs": [
-            "lastNotNull"
+            "last"
           ],
           "fields": "",
           "values": false
@@ -496,9 +501,10 @@
         "graphMode": "none",
         "justifyMode": "auto",
         "textMode": "value",
-        "wideLayout": true
+        "wideLayout": true,
+        "noValue": "DOWN"
       },
-      "description": "alloy.service active state from Unix exporter systemd metrics; falls back to DOWN when only host heartbeat exists."
+      "description": "1 means recent app OTLP metrics traversed the local Alloy pipeline into Grafana Cloud. This is pipeline telemetry presence, not exact alloy.service systemd state."
     },
     {
       "id": 5,
@@ -1076,7 +1082,7 @@
       "options": {
         "reduceOptions": {
           "calcs": [
-            "lastNotNull"
+            "last"
           ],
           "fields": "",
           "values": false
@@ -1086,7 +1092,8 @@
         "graphMode": "none",
         "justifyMode": "auto",
         "textMode": "value",
-        "wideLayout": true
+        "wideLayout": true,
+        "noValue": "NO LOGS"
       },
       "description": "Counts recent Loki log entries using only service_name and deployment_environment labels. Do not add user, IP, request ID, instance, or raw path labels."
     },
