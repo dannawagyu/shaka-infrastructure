@@ -130,7 +130,10 @@ jobs:
     name: Deploy Shaka app from verified artifact
     needs: build-server-artifact
     if: github.ref_name == 'main'
-    runs-on: ubuntu-latest
+    # Deploy must run on the self-hosted runner because the production EC2 SG
+    # only allows SSH from a fixed home network IP. GitHub-hosted runners have
+    # dynamic egress IPs and would always time out on port 22.
+    runs-on: [self-hosted, macOS]
     environment: production
     env:
       SHAKA_PROD_HOST: ${{ secrets.SHAKA_PROD_HOST }}
