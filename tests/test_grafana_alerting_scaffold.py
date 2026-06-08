@@ -49,6 +49,16 @@ class GrafanaAlertingScaffoldTest(unittest.TestCase):
         found = set(re.findall(r'([a-z0-9_]+)\s+=\s+\{', tf))
         missing = EXPECTED_ALERT_UIDS - found
         self.assertFalse(missing, f"missing alert rule uid(s): {sorted(missing)}")
+        for uid in EXPECTED_ALERT_UIDS:
+            self.assertRegex(
+                tf,
+                rf'{uid}\s+=\s+\{{[\s\S]*?uid\s+=\s+"{uid}"',
+                f"alert rule {uid} must declare its Grafana UID explicitly",
+            )
+        rfc_group = re.search(r'resource "grafana_rule_group" "shaka_rfc_0010" \{(?P<body>[\s\S]*)', tf)
+        self.assertIsNotNone(rfc_group, "missing RFC-0010 alert rule group")
+        self.assertIn("uid            = rule.value.uid", rfc_group.group("body"))
+        self.assertNotIn("uid            = rule.key", rfc_group.group("body"))
         self.assertIn("var.runbook_base_url", tf)
         self.assertIn("intervalMs    = 15000", tf)
         self.assertIn('query     = { params = ["B"] }', tf)
