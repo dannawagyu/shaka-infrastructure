@@ -278,12 +278,12 @@ if [[ ! -f "$obs_env_file" ]]; then
   echo "ERROR: staged observability env file missing" >&2
   exit 1
 fi
-printf 'EC2_INSTANCE_ID="%s"\n' "$instance_id" | sudo tee -a "$obs_env_file" >/dev/null
+printf 'EC2_INSTANCE_ID="%s"\n' "$instance_id" >> "$obs_env_file"
 # scp does not preserve mode without -p, so the remote file ends up at the user's
 # umask (typically 0644 on Ubuntu) and the next validation step would abort. Lock
 # down to 0600 explicitly before validation.
-sudo chmod 600 "$obs_env_file"
-sudo python3 - "$obs_env_file" <<'PY'
+chmod 600 "$obs_env_file"
+python3 - "$obs_env_file" <<'PY'
 import os
 import stat
 import sys
