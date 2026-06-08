@@ -23,6 +23,15 @@ EXPECTED_ALERT_UIDS = {
     "alloy_down",
 }
 
+PHASE1_RDS_ALERT_UIDS = {
+    "phase1_rds_cpu_high",
+    "phase1_rds_connections_high",
+    "phase1_rds_storage_low",
+    "phase1_rds_write_latency_high",
+}
+
+EXPLICIT_ALERT_UIDS = EXPECTED_ALERT_UIDS | PHASE1_RDS_ALERT_UIDS
+
 
 class GrafanaAlertingScaffoldTest(unittest.TestCase):
     def read_all_tf(self) -> str:
@@ -49,6 +58,26 @@ class GrafanaAlertingScaffoldTest(unittest.TestCase):
         found = set(re.findall(r'([a-z0-9_]+)\s+=\s+\{', tf))
         missing = EXPECTED_ALERT_UIDS - found
         self.assertFalse(missing, f"missing alert rule uid(s): {sorted(missing)}")
+        for uid in EXPLICIT_ALERT_UIDS:
+            self.assertRegex(
+                tf,
+                rf'{uid}\s+=\s+\{{[\s\S]*?uid\s+=\s+"{uid}"',
+                f"alert rule {uid} must declare its Grafana UID explicitly",
+            )
+        groups = {
+            "RFC-0010": re.search(
+                r'resource "grafana_rule_group" "shaka_rfc_0010" \{(?P<body>[\s\S]*?)\nresource "grafana_rule_group" "shaka_phase1_rds_migration_window"',
+                tf,
+            ),
+            "Phase 1 RDS": re.search(
+                r'resource "grafana_rule_group" "shaka_phase1_rds_migration_window" \{(?P<body>[\s\S]*)',
+                tf,
+            ),
+        }
+        for name, match in groups.items():
+            self.assertIsNotNone(match, f"missing {name} alert rule group")
+            self.assertIn("uid            = rule.value.uid", match.group("body"))
+            self.assertNotIn("uid            = rule.key", match.group("body"))
         self.assertIn("var.runbook_base_url", tf)
         self.assertIn("intervalMs    = 15000", tf)
         self.assertIn('query     = { params = ["B"] }', tf)
