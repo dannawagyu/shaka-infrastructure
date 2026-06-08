@@ -6,11 +6,15 @@ on:
       - dev
       - main
     paths:
-      # Match every workflow file so workflow-only PRs (e.g. updating a deploy
-      # workflow) still produce a Terraform CI status. Without this, the
-      # required `Terraform validation` check stays in "Expected — Waiting"
-      # forever and blocks merge.
-      - ".github/workflows/**"
+      # Explicit list of workflows that should trigger Terraform CI. Adding a
+      # new workflow? Decide whether its PRs should produce a Terraform
+      # validation status and append it here if so. Required so workflow-only
+      # PRs don't leave the `Terraform validation` check stuck in
+      # "Expected — Waiting" and block merge.
+      - ".github/workflows/terraform-ci.yml"
+      - ".github/workflows/terraform-production.yml"
+      - ".github/workflows/app-production-deploy.yml"
+      - ".github/workflows/hermes-pr-review.yml"
       - "scripts/**"
       - "tests/**"
       - "terraform/**"
@@ -20,7 +24,10 @@ on:
     branches:
       - dev
     paths:
-      - ".github/workflows/**"
+      - ".github/workflows/terraform-ci.yml"
+      - ".github/workflows/terraform-production.yml"
+      - ".github/workflows/app-production-deploy.yml"
+      - ".github/workflows/hermes-pr-review.yml"
       - "scripts/**"
       - "tests/**"
       - "terraform/**"
