@@ -133,7 +133,11 @@ jobs:
     # Deploy must run on the self-hosted runner because the production EC2 SG
     # only allows SSH from a fixed home network IP. GitHub-hosted runners have
     # dynamic egress IPs and would always time out on port 22.
-    runs-on: [self-hosted, macOS]
+    # The `shaka-production-deploy` label scopes this job to the one runner
+    # whose egress IP is on the SG allowlist; without it, any future
+    # self-hosted macOS runner added to the repo/org could pick up the job
+    # and would receive production secrets + SSH deploy capability.
+    runs-on: [self-hosted, macOS, shaka-production-deploy]
     environment: production
     env:
       SHAKA_PROD_HOST: ${{ secrets.SHAKA_PROD_HOST }}
