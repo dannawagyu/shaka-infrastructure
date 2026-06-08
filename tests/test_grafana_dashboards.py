@@ -89,6 +89,9 @@ class GrafanaDashboardRenderingTest(unittest.TestCase):
     def test_dashboard_uses_loki_zero_fallback_and_safe_tempo_filter(self) -> None:
         loki_stat = self.panel("Loki log entries, last 5m")
         self.assertIn("or vector(0)", loki_stat["targets"][0]["expr"])
+        self.assertIn("count_over_time", loki_stat["targets"][0]["expr"])
+        self.assertEqual(loki_stat["options"]["reduceOptions"]["calcs"], ["last"])
+        self.assertEqual(loki_stat["options"]["noValue"], "NO LOGS")
         self.assertEqual(loki_stat["gridPos"]["h"], 8)
 
         trace_panel = self.panel("Recent Tempo traces")
@@ -128,6 +131,7 @@ class GrafanaDashboardRenderingTest(unittest.TestCase):
         self.assertIn("node_filesystem_size_bytes", combined)
         self.assertIn("node_filesystem_avail_bytes", combined)
         self.assertIn("node_systemd_unit_state", combined)
+        self.assertNotIn("0 * max(node_cpu_seconds_total", combined)
 
         for unsupported in [
             "up{job=",
@@ -148,21 +152,55 @@ class GrafanaDashboardRenderingTest(unittest.TestCase):
         duplicated = sorted({panel_id for panel_id in panel_ids if panel_ids.count(panel_id) > 1})
         self.assertEqual(duplicated, [])
 
-    def test_core_systemd_status_is_split_by_operator_service(self) -> None:
+    def test_top_row_status_panels_use_current_telemetry_not_systemd_history(self) -> None:
         dashboard = self.rendered_dashboard()
-        expected_units = {
-            "Shaka server active": "shaka-server.service",
-            "Nginx active": "nginx.service",
-            "Alloy active": "alloy.service",
+        titles = {panel.get("title") for panel in iter_panels(dashboard)}
+        self.assertNotIn("Core systemd active", titles)
+        for stale_title in ["Shaka server active", "Nginx active", "Alloy active"]:
+            self.assertNotIn(stale_title, titles)
+
+        expected_exprs = {
+            "Shaka app telemetry live": "count_over_time(target_info",
+            "Backend HTTP traffic live": "count_over_time(http_server_request_duration_seconds_count",
+            "Alloy OTLP pipeline live": "count_over_time({__name__=~\"target_info|jvm_memory_used_bytes|http_server_request_duration_seconds_count\"",
+        }
+        for title, expr_part in expected_exprs.items():
+            panel = self.panel(title)
+            target = panel["targets"][0]
+            self.assertEqual(panel["type"], "stat")
+            self.assertTrue(target["instant"], title)
+            self.assertFalse(target["range"], title)
+            self.assertIn(expr_part, target["expr"])
+            self.assertIn("[5m]", target["expr"])
+            self.assertIn("or vector(0)", target["expr"])
+            self.assertNotIn("node_systemd_unit_state", target["expr"])
+            self.assertNotIn("node_cpu_seconds_total", target["expr"])
+            self.assertNotIn("0 * max(", target["expr"])
+            self.assertEqual(panel["fieldConfig"]["defaults"]["mappings"][0]["options"]["1"]["text"], "LIVE")
+
+    def test_status_stat_panels_use_current_samples_not_stale_last_not_null(self) -> None:
+        dashboard = self.rendered_dashboard()
+        status_panels = {
+            "App scrape status": "DOWN",
+            "Host scrape status": "DOWN",
+            "Service labels present": "MISSING",
+            "Shaka app telemetry live": "DOWN",
+            "Backend HTTP traffic live": "NO TRAFFIC",
+            "Alloy OTLP pipeline live": "DOWN",
         }
 
-        self.assertNotIn("Core systemd active", {panel.get("title") for panel in iter_panels(dashboard)})
-        for title, unit_name in expected_units.items():
+        for panel in iter_panels(dashboard):
+            calcs = panel.get("options", {}).get("reduceOptions", {}).get("calcs", [])
+            self.assertNotIn("lastNotNull", calcs, panel.get("title"))
+
+        for title, no_value in status_panels.items():
             panel = self.panel(title)
+            target = panel["targets"][0]
             self.assertEqual(panel["type"], "stat")
-            self.assertEqual(panel["fieldConfig"]["defaults"]["mappings"][0]["options"]["1"]["text"], "ACTIVE")
-            self.assertIn(f'name="{unit_name}"', panel["targets"][0]["expr"])
-            self.assertIn("node_systemd_unit_state", panel["targets"][0]["expr"])
+            self.assertTrue(target["instant"], title)
+            self.assertFalse(target["range"], title)
+            self.assertEqual(panel["options"]["reduceOptions"]["calcs"], ["last"])
+            self.assertEqual(panel["options"]["noValue"], no_value)
 
     def test_cloudwatch_is_only_used_by_rds_dashboard(self) -> None:
         overview = self.rendered_dashboard()
