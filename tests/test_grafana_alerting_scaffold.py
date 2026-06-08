@@ -125,6 +125,16 @@ class GrafanaAlertingScaffoldTest(unittest.TestCase):
         self.assertNotIn("otelcol.receiver.hostmetrics", alloy)
         self.assertIn('prometheus.exporter.unix "shaka_host"', prod_user_data)
         self.assertIn('prometheus.remote_write "grafana_cloud"', prod_user_data)
+        for label, replacement_pattern in [
+            ("job", r'"shaka-host"'),
+            ("service_name", r'"shaka-host"'),
+            ("deployment_environment", r'"\$\{environment\}"'),
+            ("service_instance_id", r'sys[.]env\("EC2_INSTANCE_ID"\)'),
+        ]:
+            self.assertRegex(
+                prod_user_data,
+                rf'target_label = "{label}"[\s\S]*?replacement\s+=\s+{replacement_pattern}',
+            )
         for metric in forbidden_system_metrics:
             self.assertNotIn(metric, tf, f"active alert rules must not query uncollected OTel host metric {metric}")
 
