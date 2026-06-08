@@ -99,22 +99,28 @@ class GrafanaAlertingScaffoldTest(unittest.TestCase):
         self.assertIn("WagyuShark/shaka-wiki", tf)
 
     def test_otlp_alloy_config_labels_match_alert_queries(self) -> None:
+        # Host-level signals (system_*) are not collected in this config: Grafana
+        # Alloy 1.x does not ship an otelcol.receiver.hostmetrics component, so
+        # the previous hostmetrics + processor.resource wiring never validated
+        # on the real binary. Host metrics will return in a follow-up via
+        # prometheus.exporter.unix + otelcol.receiver.prometheus, with alert
+        # queries migrated from system_* to node_*. For now, this test only
+        # asserts the OTLP-from-app pipeline that Alloy actually accepts.
         alloy = ROOT / "deploy" / "grafana" / "alloy-otlp-config.alloy"
         self.assertTrue(alloy.is_file(), f"missing OTLP Alloy config: {alloy}")
         text = alloy.read_text()
         for phrase in [
             'otelcol.receiver.otlp "shaka"',
-            'otelcol.receiver.hostmetrics "shaka_host"',
-            'collection_interval = "30s"',
-            'key    = "service.name"',
-            'value  = sys.env("OTEL_SERVICE_NAME")',
-            'value  = "shaka-host"',
-            'key    = "deployment.environment"',
-            'value  = sys.env("OTEL_DEPLOYMENT_ENVIRONMENT")',
-            'metrics = [otelcol.processor.resource.shaka_host.input]',
+            'otelcol.processor.transform "shaka"',
+            'sys.env("OTEL_SERVICE_NAME")',
+            'sys.env("OTEL_DEPLOYMENT_ENVIRONMENT")',
+            'sys.env("EC2_INSTANCE_ID")',
+            'metrics = [otelcol.processor.transform.shaka.input]',
             'metrics = [otelcol.exporter.otlphttp.grafana_cloud.input]',
         ]:
             self.assertIn(phrase, text, f"OTLP Alloy config missing phrase: {phrase}")
+        self.assertNotIn("otelcol.receiver.hostmetrics", text)
+        self.assertNotIn("otelcol.processor.resource", text)
         self.assertNotIn("GRAFANA_PROMETHEUS_REMOTE_WRITE", text)
         self.assertNotIn("glc_", text)
 

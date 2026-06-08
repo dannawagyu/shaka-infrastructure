@@ -1,6 +1,13 @@
 // Shaka OTLP-first Alloy config owned by shaka-infrastructure.
 // The app sends metrics, logs, and traces to local Alloy over OTLP; Alloy forwards
 // all three signals to Grafana Cloud with one OTLP publisher credential.
+//
+// Host-level signals (system_*) are intentionally not collected here:
+// the OTel hostmetrics receiver is not packaged as an Alloy component, and
+// the OTel resource processor is likewise not available. Host metrics will
+// be reintroduced in a follow-up via the prometheus.exporter.unix bridge
+// piped through otelcol.receiver.prometheus, with alert queries migrated
+// from system_* to node_* names at the same time.
 
 otelcol.auth.basic "grafana_cloud_otlp" {
   username = sys.env("GRAFANA_CLOUD_OTLP_USERNAME")
@@ -17,75 +24,46 @@ otelcol.receiver.otlp "shaka" {
   }
 
   output {
-    metrics = [otelcol.processor.resource.shaka.input]
-    logs    = [otelcol.processor.resource.shaka.input]
-    traces  = [otelcol.processor.resource.shaka.input]
+    metrics = [otelcol.processor.transform.shaka.input]
+    logs    = [otelcol.processor.transform.shaka.input]
+    traces  = [otelcol.processor.transform.shaka.input]
   }
 }
 
-otelcol.receiver.hostmetrics "shaka_host" {
-  collection_interval = "30s"
+otelcol.processor.transform "shaka" {
+  error_mode = "ignore"
 
-  cpu {}
-  disk {}
-  filesystem {}
-  load {}
-  memory {}
-  network {}
-  paging {}
-
-  output {
-    metrics = [otelcol.processor.resource.shaka_host.input]
-  }
-}
-
-otelcol.processor.resource "shaka" {
-  attributes {
-    action = "upsert"
-    key    = "service.name"
-    value  = sys.env("OTEL_SERVICE_NAME")
+  trace_statements {
+    context = "resource"
+    statements = [
+      `set(attributes["service.name"], "` + sys.env("OTEL_SERVICE_NAME") + `")`,
+      `set(attributes["deployment.environment"], "` + sys.env("OTEL_DEPLOYMENT_ENVIRONMENT") + `")`,
+      `set(attributes["service.instance.id"], "` + sys.env("EC2_INSTANCE_ID") + `")`,
+    ]
   }
 
-  attributes {
-    action = "upsert"
-    key    = "deployment.environment"
-    value  = sys.env("OTEL_DEPLOYMENT_ENVIRONMENT")
+  metric_statements {
+    context = "resource"
+    statements = [
+      `set(attributes["service.name"], "` + sys.env("OTEL_SERVICE_NAME") + `")`,
+      `set(attributes["deployment.environment"], "` + sys.env("OTEL_DEPLOYMENT_ENVIRONMENT") + `")`,
+      `set(attributes["service.instance.id"], "` + sys.env("EC2_INSTANCE_ID") + `")`,
+    ]
   }
 
-  attributes {
-    action = "upsert"
-    key    = "service.instance.id"
-    value  = sys.env("EC2_INSTANCE_ID")
+  log_statements {
+    context = "resource"
+    statements = [
+      `set(attributes["service.name"], "` + sys.env("OTEL_SERVICE_NAME") + `")`,
+      `set(attributes["deployment.environment"], "` + sys.env("OTEL_DEPLOYMENT_ENVIRONMENT") + `")`,
+      `set(attributes["service.instance.id"], "` + sys.env("EC2_INSTANCE_ID") + `")`,
+    ]
   }
 
   output {
     metrics = [otelcol.processor.batch.shaka.input]
     logs    = [otelcol.processor.batch.shaka.input]
     traces  = [otelcol.processor.batch.shaka.input]
-  }
-}
-
-otelcol.processor.resource "shaka_host" {
-  attributes {
-    action = "upsert"
-    key    = "service.name"
-    value  = "shaka-host"
-  }
-
-  attributes {
-    action = "upsert"
-    key    = "deployment.environment"
-    value  = sys.env("OTEL_DEPLOYMENT_ENVIRONMENT")
-  }
-
-  attributes {
-    action = "upsert"
-    key    = "service.instance.id"
-    value  = sys.env("EC2_INSTANCE_ID")
-  }
-
-  output {
-    metrics = [otelcol.processor.batch.shaka.input]
   }
 }
 
