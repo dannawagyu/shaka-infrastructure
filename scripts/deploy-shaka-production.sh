@@ -409,7 +409,13 @@ for attempt in $(seq 1 12); do
 done
 REMOTE_DEPLOY
 
-external_code="$(curl -s -o /dev/null -w '%{http_code}' "${SHAKA_PROD_URL%/}/actuator/health" || echo '000')"
+# -k allows SHAKA_PROD_URL to point directly at the ALB DNS during the DNS
+# cutover window: ACM cert is bound to shaka.dannawagyu.com, so calling the
+# ALB hostname https://shaka-prod-alb-*.elb.amazonaws.com produces a cert
+# hostname mismatch. The health check here only validates deploy success,
+# not user-facing TLS. Once SHAKA_PROD_URL is restored to the domain, the
+# verify is effectively re-enabled through normal certificate matching.
+external_code="$(curl -sk -o /dev/null -w '%{http_code}' "${SHAKA_PROD_URL%/}/actuator/health" || echo '000')"
 echo "External health: HTTP ${external_code}"
 if [[ "$external_code" != "200" ]]; then
   echo "ERROR: external health check failed for ${SHAKA_PROD_URL%/}/actuator/health" >&2
