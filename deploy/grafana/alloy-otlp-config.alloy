@@ -30,14 +30,19 @@ otelcol.receiver.otlp "shaka" {
   }
 }
 
+// service.name and deployment.environment are populated by the Java agent
+// (OTEL_SERVICE_NAME and OTEL_RESOURCE_ATTRIBUTES) on every OTLP signal,
+// so this processor must not re-set them here: an unconditional OTTL set
+// would overwrite the agent's values, and any env-resolution edge case
+// would replace them with empty strings. service.instance.id is the only
+// resource attribute the agent does not provide, so it is set here from
+// the EC2 instance id resolved on the host.
 otelcol.processor.transform "shaka" {
   error_mode = "ignore"
 
   trace_statements {
     context = "resource"
     statements = [
-      `set(attributes["service.name"], "` + sys.env("OTEL_SERVICE_NAME") + `")`,
-      `set(attributes["deployment.environment"], "` + sys.env("OTEL_DEPLOYMENT_ENVIRONMENT") + `")`,
       `set(attributes["service.instance.id"], "` + sys.env("EC2_INSTANCE_ID") + `")`,
     ]
   }
@@ -45,8 +50,6 @@ otelcol.processor.transform "shaka" {
   metric_statements {
     context = "resource"
     statements = [
-      `set(attributes["service.name"], "` + sys.env("OTEL_SERVICE_NAME") + `")`,
-      `set(attributes["deployment.environment"], "` + sys.env("OTEL_DEPLOYMENT_ENVIRONMENT") + `")`,
       `set(attributes["service.instance.id"], "` + sys.env("EC2_INSTANCE_ID") + `")`,
     ]
   }
@@ -54,8 +57,6 @@ otelcol.processor.transform "shaka" {
   log_statements {
     context = "resource"
     statements = [
-      `set(attributes["service.name"], "` + sys.env("OTEL_SERVICE_NAME") + `")`,
-      `set(attributes["deployment.environment"], "` + sys.env("OTEL_DEPLOYMENT_ENVIRONMENT") + `")`,
       `set(attributes["service.instance.id"], "` + sys.env("EC2_INSTANCE_ID") + `")`,
     ]
   }
