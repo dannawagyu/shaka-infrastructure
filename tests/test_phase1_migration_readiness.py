@@ -205,6 +205,8 @@ class Phase1MigrationReadinessTest(unittest.TestCase):
         ]:
             self.assertIn(unit, alerts)
         self.assertIn('DBInstanceIdentifier = "*"', alerts)
+        self.assertIn("matchExact    = true", alerts)
+        self.assertIn("CloudWatch Metric Search supports wildcard dimension values", alerts)
         self.assertNotIn("terraform apply", alerts)
 
 
