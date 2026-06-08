@@ -365,7 +365,7 @@
             "uid": "${prometheus_datasource_uid}"
           },
           "editorMode": "code",
-          "expr": "clamp_max(sum(count_over_time(http_server_request_duration_seconds_count{service_name=\"shaka-server\",deployment_environment=\"${environment}\"}[5m])), 1) or vector(0)",
+          "expr": "clamp_max(sum(increase(http_server_request_duration_seconds_count{service_name=\"shaka-server\",deployment_environment=\"${environment}\"}[5m])), 1) or vector(0)",
           "instant": true,
           "range": false,
           "refId": "A",
@@ -423,7 +423,7 @@
         "wideLayout": true,
         "noValue": "NO TRAFFIC"
       },
-      "description": "1 means current-window backend HTTP request telemetry is reaching Grafana Cloud. This does not claim nginx.service systemd state."
+      "description": "1 means the backend HTTP request counter increased during the current window. This does not claim nginx.service systemd state."
     },
     {
       "id": 19,
@@ -446,7 +446,7 @@
             "uid": "${prometheus_datasource_uid}"
           },
           "editorMode": "code",
-          "expr": "clamp_max(sum(count_over_time({__name__=~\"target_info|jvm_memory_used_bytes|http_server_request_duration_seconds_count\",service_name=\"shaka-server\",deployment_environment=\"${environment}\"}[5m])), 1) or vector(0)",
+          "expr": "clamp_max(sum(count_over_time(target_info{service_name=\"shaka-server\",deployment_environment=\"${environment}\"}[5m])), 1) or vector(0)",
           "instant": true,
           "range": false,
           "refId": "A",

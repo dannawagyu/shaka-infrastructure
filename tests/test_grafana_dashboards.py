@@ -161,8 +161,8 @@ class GrafanaDashboardRenderingTest(unittest.TestCase):
 
         expected_exprs = {
             "Shaka app telemetry live": "count_over_time(target_info",
-            "Backend HTTP traffic live": "count_over_time(http_server_request_duration_seconds_count",
-            "Alloy OTLP pipeline live": "count_over_time({__name__=~\"target_info|jvm_memory_used_bytes|http_server_request_duration_seconds_count\"",
+            "Backend HTTP traffic live": "increase(http_server_request_duration_seconds_count",
+            "Alloy OTLP pipeline live": "count_over_time(target_info",
         }
         for title, expr_part in expected_exprs.items():
             panel = self.panel(title)
