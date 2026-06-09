@@ -21,9 +21,19 @@ variable "cloudwatch_datasource_uid" {
 }
 
 variable "cloudwatch_region" {
-  description = "AWS region selected by default on the Shaka Amazon RDS dashboard. Pass the production AWS_REGION so CloudWatch queries do not fall back to the datasource default region."
+  description = "AWS region used by the Grafana CloudWatch datasource for the RDS dashboard and Phase 1 migration-window alerts. Pass the production AWS_REGION so CloudWatch queries do not fall back to the datasource default region."
   type        = string
   default     = "ap-southeast-2"
+}
+
+variable "phase1_rds_db_instance_identifier" {
+  description = "RDS DBInstanceIdentifier used by Phase 1 migration-window alerts. Pass each environment's intended DB instance explicitly so missing configuration fails closed."
+  type        = string
+
+  validation {
+    condition     = length(trimspace(var.phase1_rds_db_instance_identifier)) > 0 && trimspace(var.phase1_rds_db_instance_identifier) != "*"
+    error_message = "phase1_rds_db_instance_identifier must be a specific RDS DBInstanceIdentifier, not empty or '*'."
+  }
 }
 
 variable "loki_datasource_uid" {
