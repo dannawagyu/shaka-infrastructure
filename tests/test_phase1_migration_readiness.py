@@ -225,10 +225,10 @@ class Phase1MigrationReadinessTest(unittest.TestCase):
             'unit       = "Seconds"',
         ]:
             self.assertIn(unit, alerts)
-        self.assertIn("phase1_rds_db_instance_identifier", variables)
+        self.assertIn("rds_db_instance_identifier", variables)
         self.assertIn("missing configuration fails closed", variables)
         self.assertNotIn('default     = "shaka-prod-mysql"', variables)
-        self.assertIn("DBInstanceIdentifier = var.phase1_rds_db_instance_identifier", alerts)
+        self.assertIn("DBInstanceIdentifier = var.rds_db_instance_identifier", alerts)
         self.assertNotIn('DBInstanceIdentifier = "*"', alerts)
         self.assertIn("matchExact    = true", alerts)
         self.assertIn("broadly-permissioned CloudWatch datasource", alerts)
