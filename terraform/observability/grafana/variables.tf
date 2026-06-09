@@ -16,14 +16,35 @@ variable "prometheus_datasource_uid" {
 }
 
 variable "cloudwatch_datasource_uid" {
-  description = "Grafana datasource UID for the Grafana CloudWatch datasource used by the imported Amazon RDS dashboard. This is a datasource UID, not an AWS key, token, or endpoint."
+  description = "Grafana datasource UID for the Grafana CloudWatch datasource used by the imported Amazon RDS dashboard and dedicated Shaka ALB dashboard. This is a datasource UID, not an AWS key, token, or endpoint."
   type        = string
 }
 
 variable "cloudwatch_region" {
-  description = "AWS region used by the Grafana CloudWatch datasource for the RDS dashboard and Phase 1 migration-window alerts. Pass the production AWS_REGION so CloudWatch queries do not fall back to the datasource default region."
+  description = "AWS region used by the Grafana CloudWatch datasource for RDS and ALB dashboards/alerts. Pass the production AWS_REGION so CloudWatch queries do not fall back to the datasource default region."
   type        = string
   default     = "ap-southeast-2"
+}
+
+
+variable "alb_load_balancer_arn_suffix" {
+  description = "Application Load Balancer ARN suffix used by AWS/ApplicationELB CloudWatch dashboard panels and alerts, e.g. app/name/id. Pass from the production aws_lb.shaka.arn_suffix output."
+  type        = string
+
+  validation {
+    condition     = length(trimspace(var.alb_load_balancer_arn_suffix)) > 0 && trimspace(var.alb_load_balancer_arn_suffix) != "*"
+    error_message = "alb_load_balancer_arn_suffix must be a concrete ALB ARN suffix, not empty or '*'."
+  }
+}
+
+variable "alb_target_group_arn_suffix" {
+  description = "ALB target group ARN suffix used by AWS/ApplicationELB CloudWatch dashboard panels and alerts, e.g. targetgroup/name/id. Pass from the production aws_lb_target_group.shaka_app.arn_suffix output."
+  type        = string
+
+  validation {
+    condition     = length(trimspace(var.alb_target_group_arn_suffix)) > 0 && trimspace(var.alb_target_group_arn_suffix) != "*"
+    error_message = "alb_target_group_arn_suffix must be a concrete target group ARN suffix, not empty or '*'."
+  }
 }
 
 variable "phase1_rds_db_instance_identifier" {

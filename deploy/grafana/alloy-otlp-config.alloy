@@ -1,13 +1,8 @@
-// Shaka OTLP-first Alloy config owned by shaka-infrastructure.
-// The app sends metrics, logs, and traces to local Alloy over OTLP; Alloy forwards
-// all three signals to Grafana Cloud with one OTLP publisher credential.
-//
-// Host-level signals (system_*) are intentionally not collected here:
-// the OTel hostmetrics receiver is not packaged as an Alloy component, and
-// the OTel resource processor is likewise not available. Host metrics will
-// be reintroduced in a follow-up via the prometheus.exporter.unix bridge
-// piped through otelcol.receiver.prometheus, with alert queries migrated
-// from system_* to node_* names at the same time.
+// Shaka production Alloy config owned by shaka-infrastructure.
+// App telemetry uses OTLP from the Java agent; host telemetry uses the Unix
+// exporter and Prometheus remote_write. Do not replace missing telemetry with
+// dashboard-side green fallbacks: app, host, and ALB missing-data paths are
+// verified separately.
 
 otelcol.auth.basic "grafana_cloud_otlp" {
   username = sys.env("GRAFANA_CLOUD_OTLP_USERNAME")
@@ -31,12 +26,8 @@ otelcol.receiver.otlp "shaka" {
 }
 
 // service.name and deployment.environment are populated by the Java agent
-// (OTEL_SERVICE_NAME and OTEL_RESOURCE_ATTRIBUTES) on every OTLP signal,
-// so this processor must not re-set them here: an unconditional OTTL set
-// would overwrite the agent's values, and any env-resolution edge case
-// would replace them with empty strings. service.instance.id is the only
-// resource attribute the agent does not provide, so it is set here from
-// the EC2 instance id resolved on the host.
+// (OTEL_SERVICE_NAME and OTEL_RESOURCE_ATTRIBUTES) on every OTLP signal.
+// Alloy only adds service.instance.id from the EC2 instance id resolved on host.
 otelcol.processor.transform "shaka" {
   error_mode = "ignore"
 
@@ -82,5 +73,61 @@ otelcol.exporter.otlphttp "grafana_cloud" {
   client {
     endpoint = sys.env("GRAFANA_CLOUD_OTLP_ENDPOINT")
     auth     = otelcol.auth.basic.grafana_cloud_otlp.handler
+  }
+}
+
+prometheus.exporter.unix "shaka_host" {
+  // Keep default unix collectors enabled and add systemd service state metrics.
+  // This Alloy version uses enable_collectors instead of unsupported enabled_collectors.
+  enable_collectors = ["systemd"]
+
+  filesystem {
+    fs_types_exclude     = "^(autofs|binfmt_misc|bpf|cgroup2?|configfs|debugfs|devpts|devtmpfs|fusectl|hugetlbfs|iso9660|mqueue|nsfs|overlay|proc|procfs|pstore|rpc_pipefs|securityfs|selinuxfs|squashfs|sysfs|tracefs)$"
+    mount_points_exclude = "^/(dev|proc|run/credentials/.+|sys|var/lib/docker/.+)($|/)"
+  }
+
+  systemd {
+    unit_include = "^(shaka-server|nginx|alloy)[.]service$"
+  }
+}
+
+prometheus.scrape "shaka_host" {
+  targets         = prometheus.exporter.unix.shaka_host.targets
+  scrape_interval = "30s"
+  forward_to      = [prometheus.relabel.shaka_host_resource_labels.receiver]
+}
+
+prometheus.relabel "shaka_host_resource_labels" {
+  forward_to = [prometheus.remote_write.grafana_cloud.receiver]
+
+  rule {
+    target_label = "job"
+    replacement  = "shaka-host"
+  }
+
+  rule {
+    target_label = "service_name"
+    replacement  = "shaka-host"
+  }
+
+  rule {
+    target_label = "deployment_environment"
+    replacement  = "prod"
+  }
+
+  rule {
+    target_label = "service_instance_id"
+    replacement  = sys.env("EC2_INSTANCE_ID")
+  }
+}
+
+prometheus.remote_write "grafana_cloud" {
+  endpoint {
+    url = sys.env("GRAFANA_PROMETHEUS_REMOTE_WRITE_URL")
+
+    basic_auth {
+      username = sys.env("GRAFANA_PROMETHEUS_REMOTE_WRITE_USER")
+      password = sys.env("GRAFANA_PROMETHEUS_REMOTE_WRITE_TOKEN")
+    }
   }
 }

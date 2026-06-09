@@ -202,7 +202,7 @@
             "uid": "${prometheus_datasource_uid}"
           },
           "editorMode": "code",
-          "expr": "count by (service_name, deployment_environment) ({__name__=~\"target_info|jvm_memory_used_bytes|http_server_request_duration_seconds_count|node_cpu_seconds_total\",service_name=~\"shaka-server|shaka-host\",deployment_environment=\"${environment}\"}) or (label_replace(label_replace(vector(0), \"service_name\", \"shaka-server\", \"__name__\", \".*\"), \"deployment_environment\", \"${environment}\", \"__name__\", \".*\") or label_replace(label_replace(vector(0), \"service_name\", \"shaka-host\", \"__name__\", \".*\"), \"deployment_environment\", \"${environment}\", \"__name__\", \".*\"))",
+          "expr": "clamp_max(count by (service_name, deployment_environment) ({__name__=~\"target_info|jvm_memory_used_bytes|http_server_request_duration_seconds_count|node_cpu_seconds_total\",service_name=~\"shaka-server|shaka-host\",deployment_environment=\"${environment}\"}), 1) or (label_replace(label_replace(vector(0), \"service_name\", \"shaka-server\", \"__name__\", \".*\"), \"deployment_environment\", \"${environment}\", \"__name__\", \".*\") or label_replace(label_replace(vector(0), \"service_name\", \"shaka-host\", \"__name__\", \".*\"), \"deployment_environment\", \"${environment}\", \"__name__\", \".*\"))",
           "instant": true,
           "range": false,
           "refId": "A",
@@ -261,7 +261,7 @@
         "wideLayout": true,
         "noValue": "MISSING"
       },
-      "description": "Inventory of stable app and Unix-exporter host labels translated into Prometheus labels."
+      "description": "Boolean inventory of stable app and Unix-exporter host labels translated into Prometheus labels. Counts above one are clamped so PRESENT/MISSING mappings stay truthful."
     },
     {
       "id": 4,

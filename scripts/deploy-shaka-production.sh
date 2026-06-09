@@ -19,6 +19,9 @@ Required environment variables:
   GRAFANA_CLOUD_OTLP_ENDPOINT
   GRAFANA_CLOUD_OTLP_USERNAME
   GRAFANA_CLOUD_OTLP_PASSWORD
+  GRAFANA_PROMETHEUS_REMOTE_WRITE_URL
+  GRAFANA_PROMETHEUS_REMOTE_WRITE_USER
+  GRAFANA_PROMETHEUS_REMOTE_WRITE_TOKEN
 
 Optional environment variables:
   SHAKA_INFRA_DIR                 defaults to repository root
@@ -43,6 +46,9 @@ SERVER_DIR="${SHAKA_SERVER_DIR:?SHAKA_SERVER_DIR is required}"
 : "${GRAFANA_CLOUD_OTLP_ENDPOINT:?GRAFANA_CLOUD_OTLP_ENDPOINT is required}"
 : "${GRAFANA_CLOUD_OTLP_USERNAME:?GRAFANA_CLOUD_OTLP_USERNAME is required}"
 : "${GRAFANA_CLOUD_OTLP_PASSWORD:?GRAFANA_CLOUD_OTLP_PASSWORD is required}"
+: "${GRAFANA_PROMETHEUS_REMOTE_WRITE_URL:?GRAFANA_PROMETHEUS_REMOTE_WRITE_URL is required}"
+: "${GRAFANA_PROMETHEUS_REMOTE_WRITE_USER:?GRAFANA_PROMETHEUS_REMOTE_WRITE_USER is required}"
+: "${GRAFANA_PROMETHEUS_REMOTE_WRITE_TOKEN:?GRAFANA_PROMETHEUS_REMOTE_WRITE_TOKEN is required}"
 
 SHAKA_PROD_SSH_USER="${SHAKA_PROD_SSH_USER:-ubuntu}"
 OTEL_SERVICE_NAME="${OTEL_SERVICE_NAME:-shaka-server}"
@@ -66,10 +72,32 @@ for path in "$LOCAL_JAR" "$NGINX_CONF" "$SYSTEMD_CONF" "$ENV_EXAMPLE" "$ALLOY_CO
   fi
 done
 
-case "$GRAFANA_CLOUD_OTLP_ENDPOINT" in
-  https://*.grafana.net*|https://*.grafana.com*) ;;
-  *) echo "ERROR: GRAFANA_CLOUD_OTLP_ENDPOINT must be a Grafana Cloud HTTPS endpoint" >&2; exit 1 ;;
-esac
+python3 - <<'PY'
+import os
+from urllib.parse import urlparse
+
+
+def validate_grafana_url(name, *, expected_path=None, host_prefix=None):
+    value = os.environ[name]
+    parsed = urlparse(value)
+    host = parsed.hostname or ""
+    if parsed.scheme != "https" or parsed.username or parsed.password:
+        raise SystemExit(f"ERROR: {name} must be a Grafana Cloud HTTPS endpoint")
+    if not (host.endswith(".grafana.net") or host.endswith(".grafana.com")):
+        raise SystemExit(f"ERROR: {name} must be a Grafana Cloud HTTPS endpoint")
+    if host_prefix and not host.startswith(host_prefix):
+        raise SystemExit(f"ERROR: {name} must be a Grafana Cloud Prometheus remote_write endpoint")
+    if expected_path is not None and parsed.path != expected_path:
+        raise SystemExit(f"ERROR: {name} must be a Grafana Cloud Prometheus remote_write endpoint")
+
+
+validate_grafana_url("GRAFANA_CLOUD_OTLP_ENDPOINT")
+validate_grafana_url(
+    "GRAFANA_PROMETHEUS_REMOTE_WRITE_URL",
+    expected_path="/api/prom/push",
+    host_prefix="prometheus-",
+)
+PY
 if [[ ! "$OTEL_JAVA_AGENT_SHA256" =~ ^[0-9a-fA-F]{64}$ ]]; then
   echo "ERROR: OTEL_JAVA_AGENT_SHA256 must be a 64-character SHA-256 hex digest" >&2
   exit 1
@@ -171,6 +199,9 @@ chmod 600 "$OBS_ENV_FILE"
 write_env_line "$OBS_ENV_FILE" GRAFANA_CLOUD_OTLP_ENDPOINT
 write_env_line "$OBS_ENV_FILE" GRAFANA_CLOUD_OTLP_USERNAME
 write_env_line "$OBS_ENV_FILE" GRAFANA_CLOUD_OTLP_PASSWORD
+write_env_line "$OBS_ENV_FILE" GRAFANA_PROMETHEUS_REMOTE_WRITE_URL
+write_env_line "$OBS_ENV_FILE" GRAFANA_PROMETHEUS_REMOTE_WRITE_USER
+write_env_line "$OBS_ENV_FILE" GRAFANA_PROMETHEUS_REMOTE_WRITE_TOKEN
 write_env_line "$OBS_ENV_FILE" OTEL_SERVICE_NAME
 write_env_line "$OBS_ENV_FILE" OTEL_DEPLOYMENT_ENVIRONMENT
 # EC2_INSTANCE_ID is resolved on the host via IMDSv2 and appended before install.
@@ -294,6 +325,9 @@ required = {
     "GRAFANA_CLOUD_OTLP_ENDPOINT",
     "GRAFANA_CLOUD_OTLP_USERNAME",
     "GRAFANA_CLOUD_OTLP_PASSWORD",
+    "GRAFANA_PROMETHEUS_REMOTE_WRITE_URL",
+    "GRAFANA_PROMETHEUS_REMOTE_WRITE_USER",
+    "GRAFANA_PROMETHEUS_REMOTE_WRITE_TOKEN",
     "OTEL_SERVICE_NAME",
     "OTEL_DEPLOYMENT_ENVIRONMENT",
     "EC2_INSTANCE_ID",
@@ -307,10 +341,29 @@ for raw in path.read_text(encoding="utf-8").splitlines():
     values[key.strip()] = value.strip().strip('"').strip("'")
 missing = sorted(key for key in required if not values.get(key))
 if missing:
-    raise SystemExit("ERROR: missing required Alloy OTLP env keys: " + ", ".join(missing))
-endpoint = values["GRAFANA_CLOUD_OTLP_ENDPOINT"]
-if not (endpoint.startswith("https://") and (".grafana.net" in endpoint or ".grafana.com" in endpoint)):
-    raise SystemExit("ERROR: GRAFANA_CLOUD_OTLP_ENDPOINT must be a Grafana Cloud HTTPS endpoint")
+    raise SystemExit("ERROR: missing required Alloy OTLP/remote_write env keys: " + ", ".join(missing))
+from urllib.parse import urlparse
+
+
+def validate_grafana_url(name, *, expected_path=None, host_prefix=None):
+    parsed = urlparse(values[name])
+    host = parsed.hostname or ""
+    if parsed.scheme != "https" or parsed.username or parsed.password:
+        raise SystemExit(f"ERROR: {name} must be a Grafana Cloud HTTPS endpoint")
+    if not (host.endswith(".grafana.net") or host.endswith(".grafana.com")):
+        raise SystemExit(f"ERROR: {name} must be a Grafana Cloud HTTPS endpoint")
+    if host_prefix and not host.startswith(host_prefix):
+        raise SystemExit(f"ERROR: {name} must be a Grafana Cloud Prometheus remote_write endpoint")
+    if expected_path is not None and parsed.path != expected_path:
+        raise SystemExit(f"ERROR: {name} must be a Grafana Cloud Prometheus remote_write endpoint")
+
+
+validate_grafana_url("GRAFANA_CLOUD_OTLP_ENDPOINT")
+validate_grafana_url(
+    "GRAFANA_PROMETHEUS_REMOTE_WRITE_URL",
+    expected_path="/api/prom/push",
+    host_prefix="prometheus-",
+)
 for key, value in values.items():
     lowered = value.lower()
     if "<" in value or ">" in value or "placeholder" in lowered or "changeme" in lowered:

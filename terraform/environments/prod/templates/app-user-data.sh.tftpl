@@ -41,7 +41,7 @@ set -euo pipefail
 ENV_FILE=/etc/alloy/grafana-cloud.env
 
 if [[ ! -f "$ENV_FILE" ]]; then
-  echo "Missing $ENV_FILE. Populate Grafana Cloud remote_write credentials from the deployment/operator secret path before starting Alloy." >&2
+  echo "Missing $ENV_FILE. Populate Grafana Cloud OTLP and remote_write credentials from the deployment/operator secret path before starting Alloy." >&2
   exit 1
 fi
 
@@ -63,17 +63,24 @@ set -a
 source "$ENV_FILE"
 set +a
 
-for var in GRAFANA_PROMETHEUS_REMOTE_WRITE_URL GRAFANA_PROMETHEUS_REMOTE_WRITE_USER GRAFANA_PROMETHEUS_REMOTE_WRITE_TOKEN; do
+for var in GRAFANA_CLOUD_OTLP_ENDPOINT GRAFANA_CLOUD_OTLP_USERNAME GRAFANA_CLOUD_OTLP_PASSWORD GRAFANA_PROMETHEUS_REMOTE_WRITE_URL GRAFANA_PROMETHEUS_REMOTE_WRITE_USER GRAFANA_PROMETHEUS_REMOTE_WRITE_TOKEN; do
   if [[ -z "$${!var:-}" ]]; then
     echo "$ENV_FILE is missing required variable $var" >&2
     exit 1
   fi
 done
 
-if [[ "$${GRAFANA_PROMETHEUS_REMOTE_WRITE_TOKEN}" == "***" ]]; then
-  echo "$ENV_FILE contains the example token placeholder" >&2
+if [[ -z "$${EC2_INSTANCE_ID:-}" ]]; then
+  echo "Required environment variable EC2_INSTANCE_ID is missing" >&2
   exit 1
 fi
+
+for secret_var in GRAFANA_CLOUD_OTLP_PASSWORD GRAFANA_PROMETHEUS_REMOTE_WRITE_TOKEN; do
+  if [[ "$${!secret_var}" == "***" ]]; then
+    echo "$ENV_FILE contains the example placeholder for $secret_var" >&2
+    exit 1
+  fi
+done
 VALIDATE
 chmod 0700 /usr/local/sbin/validate-alloy-grafana-cloud-env
 
@@ -81,16 +88,98 @@ cat >/etc/alloy/grafana-cloud.env.example <<'ENV'
 # Copy to /etc/alloy/grafana-cloud.env as root:root with mode 0600 from the
 # production deployment/operator secret path, then restart alloy. Do not put
 # real values in Terraform variables, user_data, git, logs, or screenshots.
+GRAFANA_CLOUD_OTLP_ENDPOINT=https://otlp-gateway-prod-xx.grafana.net/otlp
+GRAFANA_CLOUD_OTLP_USERNAME=000000
+GRAFANA_CLOUD_OTLP_PASSWORD=***
 GRAFANA_PROMETHEUS_REMOTE_WRITE_URL=https://prometheus-prod-xx.grafana.net/api/prom/push
 GRAFANA_PROMETHEUS_REMOTE_WRITE_USER=000000
 GRAFANA_PROMETHEUS_REMOTE_WRITE_TOKEN=***
+# EC2_INSTANCE_ID is resolved by IMDSv2 in user data and passed to Alloy via systemd.
 ENV
 chmod 0644 /etc/alloy/grafana-cloud.env.example
 
 cat >/etc/alloy/config.alloy <<'ALLOY'
+// Shaka production Alloy config owned by shaka-infrastructure.
+// App telemetry uses OTLP from the Java agent; host telemetry uses the Unix
+// exporter and Prometheus remote_write. Do not replace missing telemetry with
+// dashboard-side green fallbacks: app, host, and ALB missing-data paths are
+// verified separately.
+
+otelcol.auth.basic "grafana_cloud_otlp" {
+  username = sys.env("GRAFANA_CLOUD_OTLP_USERNAME")
+  password = sys.env("GRAFANA_CLOUD_OTLP_PASSWORD")
+}
+
+otelcol.receiver.otlp "shaka" {
+  grpc {
+    endpoint = "127.0.0.1:4317"
+  }
+
+  http {
+    endpoint = "127.0.0.1:4318"
+  }
+
+  output {
+    metrics = [otelcol.processor.transform.shaka.input]
+    logs    = [otelcol.processor.transform.shaka.input]
+    traces  = [otelcol.processor.transform.shaka.input]
+  }
+}
+
+// service.name and deployment.environment are populated by the Java agent
+// (OTEL_SERVICE_NAME and OTEL_RESOURCE_ATTRIBUTES) on every OTLP signal.
+// Alloy only adds service.instance.id from the EC2 instance id resolved on host.
+otelcol.processor.transform "shaka" {
+  error_mode = "ignore"
+
+  trace_statements {
+    context = "resource"
+    statements = [
+      `set(attributes["service.instance.id"], "` + sys.env("EC2_INSTANCE_ID") + `")`,
+    ]
+  }
+
+  metric_statements {
+    context = "resource"
+    statements = [
+      `set(attributes["service.instance.id"], "` + sys.env("EC2_INSTANCE_ID") + `")`,
+    ]
+  }
+
+  log_statements {
+    context = "resource"
+    statements = [
+      `set(attributes["service.instance.id"], "` + sys.env("EC2_INSTANCE_ID") + `")`,
+    ]
+  }
+
+  output {
+    metrics = [otelcol.processor.batch.shaka.input]
+    logs    = [otelcol.processor.batch.shaka.input]
+    traces  = [otelcol.processor.batch.shaka.input]
+  }
+}
+
+otelcol.processor.batch "shaka" {
+  timeout = "5s"
+
+  output {
+    metrics = [otelcol.exporter.otlphttp.grafana_cloud.input]
+    logs    = [otelcol.exporter.otlphttp.grafana_cloud.input]
+    traces  = [otelcol.exporter.otlphttp.grafana_cloud.input]
+  }
+}
+
+otelcol.exporter.otlphttp "grafana_cloud" {
+  client {
+    endpoint = sys.env("GRAFANA_CLOUD_OTLP_ENDPOINT")
+    auth     = otelcol.auth.basic.grafana_cloud_otlp.handler
+  }
+}
+
 prometheus.exporter.unix "shaka_host" {
-  # Keep default unix collectors enabled and add systemd service state metrics.
-  # This Alloy version uses enable_collectors instead of unsupported enabled_collectors.
+  // Keep default unix collectors enabled and add systemd service state metrics.
+  // This Alloy version uses enable_collectors instead of unsupported enabled_collectors.
   enable_collectors = ["systemd"]
 
   filesystem {
@@ -143,6 +232,7 @@ prometheus.remote_write "grafana_cloud" {
     }
   }
 }
+
 ALLOY
 
 systemctl daemon-reload

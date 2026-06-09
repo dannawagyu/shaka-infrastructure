@@ -15,6 +15,12 @@ locals {
     managed_by             = "terraform"
     rollout_phase          = "phase1-membership-migration"
   }
+
+  shaka_alb_alert_labels = {
+    service_name           = "shaka-alb"
+    deployment_environment = var.environment
+    managed_by             = "terraform"
+  }
 }
 
 resource "grafana_rule_group" "shaka_rfc_0010" {
@@ -25,58 +31,67 @@ resource "grafana_rule_group" "shaka_rfc_0010" {
   dynamic "rule" {
     for_each = {
       app_scrape_down = {
-        uid       = "app_scrape_down"
-        title     = "Shaka app OTLP metrics missing"
-        condition = "absent_over_time(target_info{service_name=\"shaka-server\",deployment_environment=\"${var.environment}\"}[10m]) or vector(0)"
-        summary   = "OpenTelemetry app metrics from shaka-server are missing. Check the app, Java agent, and local Alloy OTLP receiver/exporter."
+        uid          = "app_scrape_down"
+        title        = "Shaka app OTLP metrics missing"
+        service_name = "shaka-server"
+        condition    = "absent_over_time(target_info{service_name=\"shaka-server\",deployment_environment=\"${var.environment}\"}[10m]) or vector(0)"
+        summary      = "OpenTelemetry app metrics from shaka-server are missing. Check the app, Java agent, and local Alloy OTLP receiver/exporter."
       }
       http_5xx = {
-        uid       = "http_5xx"
-        title     = "Shaka HTTP 5xx rate high"
-        condition = "(sum(rate(http_server_request_duration_seconds_count{service_name=\"shaka-server\",deployment_environment=\"${var.environment}\",http_response_status_code=~\"5..\"}[5m])) / sum(rate(http_server_request_duration_seconds_count{service_name=\"shaka-server\",deployment_environment=\"${var.environment}\"}[5m])) > 0.05) and (sum(rate(http_server_request_duration_seconds_count{service_name=\"shaka-server\",deployment_environment=\"${var.environment}\"}[5m])) > 0)"
-        summary   = "Backend is returning elevated 5xx responses."
+        uid          = "http_5xx"
+        title        = "Shaka HTTP 5xx rate high"
+        service_name = "shaka-server"
+        condition    = "(sum(rate(http_server_request_duration_seconds_count{service_name=\"shaka-server\",deployment_environment=\"${var.environment}\",http_response_status_code=~\"5..\"}[5m])) / sum(rate(http_server_request_duration_seconds_count{service_name=\"shaka-server\",deployment_environment=\"${var.environment}\"}[5m])) > 0.05) and (sum(rate(http_server_request_duration_seconds_count{service_name=\"shaka-server\",deployment_environment=\"${var.environment}\"}[5m])) > 0)"
+        summary      = "Backend is returning elevated 5xx responses."
       }
       jvm_heap_high = {
-        uid       = "jvm_heap_high"
-        title     = "Shaka JVM heap pressure"
-        condition = "sum by (service_instance_id) (jvm_memory_used_bytes{service_name=\"shaka-server\",deployment_environment=\"${var.environment}\",jvm_memory_type=\"heap\"}) / sum by (service_instance_id) (jvm_memory_limit_bytes{service_name=\"shaka-server\",deployment_environment=\"${var.environment}\",jvm_memory_type=\"heap\"}) > 0.85"
-        summary   = "JVM heap usage is above 85%."
+        uid          = "jvm_heap_high"
+        title        = "Shaka JVM heap pressure"
+        service_name = "shaka-server"
+        condition    = "sum by (service_instance_id) (jvm_memory_used_bytes{service_name=\"shaka-server\",deployment_environment=\"${var.environment}\",jvm_memory_type=\"heap\"}) / sum by (service_instance_id) (jvm_memory_limit_bytes{service_name=\"shaka-server\",deployment_environment=\"${var.environment}\",jvm_memory_type=\"heap\"}) > 0.85"
+        summary      = "JVM heap usage is above 85%."
       }
       root_disk_warn = {
-        uid       = "root_disk_warn"
-        title     = "Shaka root disk warning"
-        condition = "1 - (sum by (service_instance_id, mountpoint) (node_filesystem_avail_bytes{service_name=\"shaka-host\",deployment_environment=\"${var.environment}\",mountpoint=\"/\",fstype!~\"tmpfs|overlay\"}) / sum by (service_instance_id, mountpoint) (node_filesystem_size_bytes{service_name=\"shaka-host\",deployment_environment=\"${var.environment}\",mountpoint=\"/\",fstype!~\"tmpfs|overlay\"})) > 0.80"
-        summary   = "Root disk usage is above 80%."
+        uid          = "root_disk_warn"
+        title        = "Shaka root disk warning"
+        service_name = "shaka-host"
+        condition    = "1 - (sum by (service_instance_id, mountpoint) (node_filesystem_avail_bytes{service_name=\"shaka-host\",deployment_environment=\"${var.environment}\",mountpoint=\"/\",fstype!~\"tmpfs|overlay\"}) / sum by (service_instance_id, mountpoint) (node_filesystem_size_bytes{service_name=\"shaka-host\",deployment_environment=\"${var.environment}\",mountpoint=\"/\",fstype!~\"tmpfs|overlay\"})) > 0.80"
+        summary      = "Root disk usage is above 80%."
       }
       root_disk_critical = {
-        uid       = "root_disk_critical"
-        title     = "Shaka root disk critical"
-        condition = "1 - (sum by (service_instance_id, mountpoint) (node_filesystem_avail_bytes{service_name=\"shaka-host\",deployment_environment=\"${var.environment}\",mountpoint=\"/\",fstype!~\"tmpfs|overlay\"}) / sum by (service_instance_id, mountpoint) (node_filesystem_size_bytes{service_name=\"shaka-host\",deployment_environment=\"${var.environment}\",mountpoint=\"/\",fstype!~\"tmpfs|overlay\"})) > 0.90"
-        summary   = "Root disk usage is above 90%."
+        uid          = "root_disk_critical"
+        title        = "Shaka root disk critical"
+        service_name = "shaka-host"
+        condition    = "1 - (sum by (service_instance_id, mountpoint) (node_filesystem_avail_bytes{service_name=\"shaka-host\",deployment_environment=\"${var.environment}\",mountpoint=\"/\",fstype!~\"tmpfs|overlay\"}) / sum by (service_instance_id, mountpoint) (node_filesystem_size_bytes{service_name=\"shaka-host\",deployment_environment=\"${var.environment}\",mountpoint=\"/\",fstype!~\"tmpfs|overlay\"})) > 0.90"
+        summary      = "Root disk usage is above 90%."
       }
       memory_pressure = {
-        uid       = "memory_pressure"
-        title     = "Shaka host memory pressure"
-        condition = "sum by (service_instance_id) (node_memory_MemAvailable_bytes{service_name=\"shaka-host\",deployment_environment=\"${var.environment}\"}) / sum by (service_instance_id) (node_memory_MemTotal_bytes{service_name=\"shaka-host\",deployment_environment=\"${var.environment}\"}) < 0.10"
-        summary   = "Host available memory is below 10% (usage above 90%)."
+        uid          = "memory_pressure"
+        title        = "Shaka host memory pressure"
+        service_name = "shaka-host"
+        condition    = "sum by (service_instance_id) (node_memory_MemAvailable_bytes{service_name=\"shaka-host\",deployment_environment=\"${var.environment}\"}) / sum by (service_instance_id) (node_memory_MemTotal_bytes{service_name=\"shaka-host\",deployment_environment=\"${var.environment}\"}) < 0.10"
+        summary      = "Host available memory is below 10% (usage above 90%)."
       }
       cpu_saturation = {
-        uid       = "cpu_saturation"
-        title     = "Shaka host CPU saturation"
-        condition = "1 - avg by (service_instance_id) (rate(node_cpu_seconds_total{service_name=\"shaka-host\",deployment_environment=\"${var.environment}\",mode=\"idle\"}[5m])) > 0.90"
-        summary   = "Host CPU usage is above 90%."
+        uid          = "cpu_saturation"
+        title        = "Shaka host CPU saturation"
+        service_name = "shaka-host"
+        condition    = "1 - avg by (service_instance_id) (rate(node_cpu_seconds_total{service_name=\"shaka-host\",deployment_environment=\"${var.environment}\",mode=\"idle\"}[5m])) > 0.90"
+        summary      = "Host CPU usage is above 90%."
       }
       core_systemd_service_down = {
-        uid       = "core_systemd_service_down"
-        title     = "Shaka core systemd service down"
-        condition = "node_systemd_unit_state{service_name=\"shaka-host\",deployment_environment=\"${var.environment}\",name=~\"(shaka-server|nginx|alloy)[.]service\",state=\"active\"} == bool 0"
-        summary   = "One or more core services are inactive or failed when systemd metrics are available."
+        uid          = "core_systemd_service_down"
+        title        = "Shaka core systemd service down"
+        service_name = "shaka-host"
+        condition    = "node_systemd_unit_state{service_name=\"shaka-host\",deployment_environment=\"${var.environment}\",name=~\"(shaka-server|nginx|alloy)[.]service\",state=\"active\"} == bool 0"
+        summary      = "One or more core services are inactive or failed when systemd metrics are available."
       }
       alloy_down = {
-        uid       = "alloy_down"
-        title     = "Shaka host metrics heartbeat missing"
-        condition = "absent_over_time(node_cpu_seconds_total{service_name=\"shaka-host\",deployment_environment=\"${var.environment}\"}[10m]) or vector(0)"
-        summary   = "Node exporter host metrics heartbeat is missing; verify the Alloy service, Unix exporter scrape, and Grafana Cloud Prometheus remote write."
+        uid          = "alloy_down"
+        title        = "Shaka host metrics heartbeat missing"
+        service_name = "shaka-host"
+        condition    = "absent_over_time(node_cpu_seconds_total{service_name=\"shaka-host\",deployment_environment=\"${var.environment}\"}[10m]) or vector(0)"
+        summary      = "Node exporter host metrics heartbeat is missing; verify the Alloy service, Unix exporter scrape, and Grafana Cloud Prometheus remote write."
       }
     }
     content {
@@ -86,7 +101,7 @@ resource "grafana_rule_group" "shaka_rfc_0010" {
       for            = "5m"
       no_data_state  = "OK"
       exec_err_state = "Error"
-      labels         = local.shaka_alert_labels
+      labels         = merge(local.shaka_alert_labels, { service_name = rule.value.service_name })
 
       annotations = {
         summary     = rule.value.summary
@@ -261,6 +276,159 @@ resource "grafana_rule_group" "shaka_phase1_rds_migration_window" {
           region        = var.cloudwatch_region
           statistic     = rule.value.statistic
           unit          = rule.value.unit
+        })
+      }
+
+      data {
+        ref_id = "B"
+
+        relative_time_range {
+          from = 600
+          to   = 0
+        }
+
+        datasource_uid = "__expr__"
+        model = jsonencode({
+          type       = "reduce"
+          expression = "A"
+          reducer    = "last"
+          refId      = "B"
+        })
+      }
+
+      data {
+        ref_id = "C"
+
+        relative_time_range {
+          from = 600
+          to   = 0
+        }
+
+        datasource_uid = "__expr__"
+        model = jsonencode({
+          type       = "threshold"
+          expression = "B"
+          conditions = [{
+            evaluator = { type = rule.value.evaluator, params = [rule.value.threshold] }
+            operator  = { type = "and" }
+            query     = { params = ["B"] }
+            reducer   = { type = "last" }
+            type      = "query"
+          }]
+          refId = "C"
+        })
+      }
+
+      notification_settings {
+        contact_point = var.notification_contact_point_name
+      }
+    }
+  }
+}
+
+resource "grafana_rule_group" "shaka_alb_cloudwatch" {
+  name             = "Shaka ALB CloudWatch production alerts"
+  folder_uid       = grafana_folder.shaka_observability.uid
+  interval_seconds = var.alert_evaluation_interval_seconds
+
+  dynamic "rule" {
+    for_each = {
+      alb_unhealthy_host = {
+        uid                    = "alb_unhealthy_host"
+        title                  = "Shaka ALB unhealthy targets"
+        metric                 = "UnHealthyHostCount"
+        statistic              = "Maximum"
+        evaluator              = "gt"
+        threshold              = 0
+        target_group_dimension = true
+        no_data_state          = "Alerting"
+        summary                = "ALB reports one or more unhealthy Shaka targets, or the target-health metric is missing."
+        expression             = "UnHealthyHostCount maximum is above 0."
+      }
+      alb_elb_5xx = {
+        uid                    = "alb_elb_5xx"
+        title                  = "Shaka ALB generated 5xx responses"
+        metric                 = "HTTPCode_ELB_5XX_Count"
+        statistic              = "Sum"
+        evaluator              = "gt"
+        threshold              = 0
+        target_group_dimension = false
+        no_data_state          = "OK"
+        summary                = "ALB-generated 5xx responses are being returned."
+        expression             = "HTTPCode_ELB_5XX_Count sum is above 0."
+      }
+      alb_target_5xx = {
+        uid                    = "alb_target_5xx"
+        title                  = "Shaka ALB target 5xx responses"
+        metric                 = "HTTPCode_Target_5XX_Count"
+        statistic              = "Sum"
+        evaluator              = "gt"
+        threshold              = 0
+        target_group_dimension = true
+        no_data_state          = "OK"
+        summary                = "Targets behind the ALB are returning 5xx responses."
+        expression             = "HTTPCode_Target_5XX_Count sum is above 0."
+      }
+      alb_target_response_time_p95 = {
+        uid                    = "alb_target_response_time_p95"
+        title                  = "Shaka ALB target response time p95 high"
+        metric                 = "TargetResponseTime"
+        statistic              = "p95"
+        evaluator              = "gt"
+        threshold              = 1
+        target_group_dimension = true
+        no_data_state          = "OK"
+        summary                = "ALB target response time p95 is above 1 second."
+        expression             = "TargetResponseTime p95 is above 1 second."
+      }
+    }
+    content {
+      uid            = rule.value.uid
+      name           = rule.value.title
+      condition      = "C"
+      for            = "5m"
+      no_data_state  = rule.value.no_data_state
+      exec_err_state = "Error"
+      labels         = local.shaka_alb_alert_labels
+
+      annotations = {
+        summary     = rule.value.summary
+        description = rule.value.expression
+        runbook_url = var.runbook_base_url
+      }
+
+      data {
+        ref_id = "A"
+
+        relative_time_range {
+          from = 600
+          to   = 0
+        }
+
+        datasource_uid = var.cloudwatch_datasource_uid
+        model = jsonencode({
+          datasource = {
+            type = "cloudwatch"
+            uid  = var.cloudwatch_datasource_uid
+          }
+          dimensions = rule.value.target_group_dimension ? {
+            LoadBalancer = var.alb_load_balancer_arn_suffix
+            TargetGroup  = var.alb_target_group_arn_suffix
+            } : {
+            LoadBalancer = var.alb_load_balancer_arn_suffix
+          }
+          expression    = ""
+          id            = "A"
+          matchExact    = true
+          intervalMs    = 60000
+          maxDataPoints = 43200
+          metricName    = rule.value.metric
+          namespace     = "AWS/ApplicationELB"
+          period        = "60"
+          queryMode     = "Metrics"
+          refId         = "A"
+          region        = var.cloudwatch_region
+          statistic     = rule.value.statistic
         })
       }
 

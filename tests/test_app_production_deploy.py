@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Static contract checks for infra-owned Shaka production app deploy."""
 from pathlib import Path
+import re
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -31,11 +32,13 @@ class AppProductionDeployTest(unittest.TestCase):
         self.assertIn("actions/upload-artifact@v4", text)
         self.assertIn("actions/download-artifact@v4", text)
         self.assertIn("SHAKA_PROD_URL", text)
-        self.assertNotIn("GRAFANA_PROMETHEUS_REMOTE_WRITE_TOKEN", text)
+        self.assertIn("GRAFANA_PROMETHEUS_REMOTE_WRITE_URL", text)
+        self.assertIn("GRAFANA_PROMETHEUS_REMOTE_WRITE_USER", text)
+        self.assertIn("GRAFANA_PROMETHEUS_REMOTE_WRITE_TOKEN", text)
         self.assertNotIn("GRAFANA_CLOUD_LOKI_API_KEY", text)
         self.assertNotIn("TEMPO_OTLP_PASSWORD", text)
 
-    def test_deploy_script_preflights_agent_and_does_not_use_signal_specific_tokens(self):
+    def test_deploy_script_preflights_agent_and_combined_alloy_credentials(self):
         text = SCRIPT.read_text(encoding="utf-8")
         self.assertIn("Preflighting production host and OpenTelemetry Java agent before app mutation", text)
         self.assertIn("opentelemetry-javaagent-${OTEL_JAVA_AGENT_VERSION}.jar", text)
@@ -59,16 +62,34 @@ class AppProductionDeployTest(unittest.TestCase):
         self.assertIn('OBS_ENV_BASE="$3"', text)
         self.assertIn("agent_option not in existing_java_tool_options", text)
         self.assertIn("ExecStartPre=", text)
-        self.assertIn("missing required Alloy OTLP env keys", text)
+        self.assertIn("missing required Alloy OTLP/remote_write env keys", text)
         self.assertIn("placeholder value is not allowed", text)
         self.assertIn("staged Alloy OTLP env file must not be group/world readable", text)
-        self.assertIn("GRAFANA_CLOUD_OTLP_ENDPOINT must be a Grafana Cloud HTTPS endpoint", text)
+        self.assertIn("must be a Grafana Cloud HTTPS endpoint", text)
+        self.assertIn("GRAFANA_CLOUD_OTLP_ENDPOINT", text)
         self.assertIn("sudo install -o root -g root -m 0600", text)
         self.assertIn("external health check failed", text)
-        self.assertNotIn("GRAFANA_PROMETHEUS_REMOTE_WRITE_TOKEN", text)
+        self.assertIn("must be a Grafana Cloud Prometheus remote_write endpoint", text)
+        self.assertIn("GRAFANA_PROMETHEUS_REMOTE_WRITE_URL", text)
+        self.assertIn("from urllib.parse import urlparse", text)
+        self.assertIn("parsed.hostname", text)
+        self.assertIn("parsed.path", text)
+        self.assertNotIn('".grafana.net/api/prom/push" in remote_write_url', text)
+        self.assertNotIn("https://*.grafana.net/api/prom/push", text)
         self.assertNotIn("GRAFANA_CLOUD_LOKI_API_KEY", text)
         self.assertNotIn("TEMPO_OTLP_PASSWORD", text)
         self.assertNotIn("journalctl -u alloy", text)
+
+    def test_remote_write_url_validation_rejects_path_based_host_confusion(self):
+        workflow = WORKFLOW.read_text(encoding="utf-8")
+        script = SCRIPT.read_text(encoding="utf-8")
+        for text in (workflow, script):
+            self.assertIn("urlparse", text)
+            self.assertRegex(text, r"parsed[.]hostname")
+            self.assertRegex(text, r"parsed[.]path\s*!=\s*expected_path")
+            self.assertIn("parsed.username or parsed.password", text)
+            self.assertNotIn('".grafana.net/api/prom/push" in', text)
+            self.assertNotIn("https://*.grafana.net/api/prom/push", text)
 
     def test_alloy_config_is_otlp_first_for_all_three_signals(self):
         text = ALLOY.read_text(encoding="utf-8")
@@ -82,7 +103,10 @@ class AppProductionDeployTest(unittest.TestCase):
         self.assertIn('endpoint = sys.env("GRAFANA_CLOUD_OTLP_ENDPOINT")', text)
         self.assertIn('username = sys.env("GRAFANA_CLOUD_OTLP_USERNAME")', text)
         self.assertIn('password = sys.env("GRAFANA_CLOUD_OTLP_PASSWORD")', text)
-        self.assertNotIn("prometheus.remote_write", text)
+        self.assertIn('prometheus.exporter.unix "shaka_host"', text)
+        self.assertIn('prometheus.remote_write "grafana_cloud"', text)
+        self.assertIn('url = sys.env("GRAFANA_PROMETHEUS_REMOTE_WRITE_URL")', text)
+        self.assertIn('password = sys.env("GRAFANA_PROMETHEUS_REMOTE_WRITE_TOKEN")', text)
         self.assertNotIn("loki.write", text)
         self.assertNotIn("processes {}", text)
 
