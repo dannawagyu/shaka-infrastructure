@@ -148,6 +148,9 @@ jobs:
       GRAFANA_CLOUD_OTLP_ENDPOINT: ${{ secrets.GRAFANA_CLOUD_OTLP_ENDPOINT }}
       GRAFANA_CLOUD_OTLP_USERNAME: ${{ secrets.GRAFANA_CLOUD_OTLP_USERNAME }}
       GRAFANA_CLOUD_OTLP_PASSWORD: ${{ secrets.GRAFANA_CLOUD_OTLP_PASSWORD }}
+      GRAFANA_PROMETHEUS_REMOTE_WRITE_URL: ${{ secrets.GRAFANA_PROMETHEUS_REMOTE_WRITE_URL }}
+      GRAFANA_PROMETHEUS_REMOTE_WRITE_USER: ${{ secrets.GRAFANA_PROMETHEUS_REMOTE_WRITE_USER }}
+      GRAFANA_PROMETHEUS_REMOTE_WRITE_TOKEN: ${{ secrets.GRAFANA_PROMETHEUS_REMOTE_WRITE_TOKEN }}
       OTEL_SERVICE_NAME: ${{ vars.OTEL_SERVICE_NAME || 'shaka-server' }}
       OTEL_DEPLOYMENT_ENVIRONMENT: ${{ vars.OTEL_DEPLOYMENT_ENVIRONMENT || 'prod' }}
       OTEL_JAVA_AGENT_VERSION: ${{ inputs.otel_java_agent_version }}
@@ -163,7 +166,7 @@ jobs:
             exit 1
           fi
           missing=()
-          for name in SHAKA_PROD_HOST SHAKA_PROD_SSH_KEY SHAKA_PROD_SSH_KNOWN_HOSTS SHAKA_PROD_URL GRAFANA_CLOUD_OTLP_ENDPOINT GRAFANA_CLOUD_OTLP_USERNAME GRAFANA_CLOUD_OTLP_PASSWORD RELEASE_VERSION OTEL_JAVA_AGENT_SHA256; do
+          for name in SHAKA_PROD_HOST SHAKA_PROD_SSH_KEY SHAKA_PROD_SSH_KNOWN_HOSTS SHAKA_PROD_URL GRAFANA_CLOUD_OTLP_ENDPOINT GRAFANA_CLOUD_OTLP_USERNAME GRAFANA_CLOUD_OTLP_PASSWORD GRAFANA_PROMETHEUS_REMOTE_WRITE_URL GRAFANA_PROMETHEUS_REMOTE_WRITE_USER GRAFANA_PROMETHEUS_REMOTE_WRITE_TOKEN RELEASE_VERSION OTEL_JAVA_AGENT_SHA256; do
             if [[ -z "${!name:-}" ]]; then
               missing+=("$name")
             fi
@@ -172,10 +175,30 @@ jobs:
             printf 'Missing required production environment values: %s\n' "${missing[*]}" >&2
             exit 1
           fi
-          case "$GRAFANA_CLOUD_OTLP_ENDPOINT" in
-            https://*.grafana.net*|https://*.grafana.com*) ;;
-            *) echo "GRAFANA_CLOUD_OTLP_ENDPOINT must be a Grafana Cloud HTTPS endpoint" >&2; exit 1 ;;
-          esac
+          python3 - <<'PY'
+          import os
+          from urllib.parse import urlparse
+
+          def validate_grafana_url(name, *, expected_path=None, host_prefix=None):
+              value = os.environ[name]
+              parsed = urlparse(value)
+              host = parsed.hostname or ""
+              if parsed.scheme != "https" or parsed.username or parsed.password:
+                  raise SystemExit(f"{name} must be a Grafana Cloud HTTPS endpoint")
+              if not (host.endswith(".grafana.net") or host.endswith(".grafana.com")):
+                  raise SystemExit(f"{name} must be a Grafana Cloud HTTPS endpoint")
+              if host_prefix and not host.startswith(host_prefix):
+                  raise SystemExit(f"{name} must be a Grafana Cloud Prometheus remote_write endpoint")
+              if expected_path is not None and parsed.path != expected_path:
+                  raise SystemExit(f"{name} must be a Grafana Cloud Prometheus remote_write endpoint")
+
+          validate_grafana_url("GRAFANA_CLOUD_OTLP_ENDPOINT")
+          validate_grafana_url(
+              "GRAFANA_PROMETHEUS_REMOTE_WRITE_URL",
+              expected_path="/api/prom/push",
+              host_prefix="prometheus-",
+          )
+          PY
           if [[ "$OTEL_JAVA_AGENT_VERSION" == *SNAPSHOT* || ! "$OTEL_JAVA_AGENT_VERSION" =~ ^[0-9]+[.][0-9]+[.][0-9]+$ ]]; then
             echo "otel_java_agent_version must be a released semver such as 2.15.0" >&2
             exit 1

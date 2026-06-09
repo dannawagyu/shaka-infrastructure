@@ -68,3 +68,14 @@ output "acm_certificate_validation_records" {
     }
   ]
 }
+
+
+output "alb_load_balancer_arn_suffix" {
+  description = "ARN suffix for the Shaka production ALB, used by Grafana CloudWatch AWS/ApplicationELB dashboard panels and alerts."
+  value       = aws_lb.shaka.arn_suffix
+}
+
+output "alb_target_group_arn_suffix" {
+  description = "ARN suffix for the Shaka production ALB target group, used by Grafana CloudWatch AWS/ApplicationELB dashboard panels and alerts."
+  value       = aws_lb_target_group.shaka_app.arn_suffix
+}

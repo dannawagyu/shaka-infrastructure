@@ -1,0 +1,169 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "description": "Dedicated CloudWatch dashboard for Shaka ALB health, traffic, errors, latency, and capacity with explicit no-data semantics.",
+  "editable": false,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "links": [
+    {
+      "asDropdown": false,
+      "icon": "dashboard",
+      "includeVars": true,
+      "keepTime": true,
+      "tags": [],
+      "targetBlank": false,
+      "title": "Shaka ${environment_title} Overview",
+      "tooltip": "Return to app and host telemetry overview",
+      "type": "dashboard",
+      "uid": "shaka-${environment}-overview"
+    }
+  ],
+  "liveNow": false,
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "ALB healthy targets",
+      "gridPos": { "x": 0, "y": 0, "w": 6, "h": 4 },
+      "datasource": { "type": "cloudwatch", "uid": "$datasource" },
+      "targets": [
+        {
+          "datasource": { "type": "cloudwatch", "uid": "$datasource" },
+          "dimensions": { "LoadBalancer": "$load_balancer", "TargetGroup": "$target_group" },
+          "expression": "",
+          "id": "A",
+          "matchExact": true,
+          "metricName": "HealthyHostCount",
+          "namespace": "AWS/ApplicationELB",
+          "period": "60",
+          "queryMode": "Metrics",
+          "refId": "A",
+          "region": "$region",
+          "statistic": "Maximum"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short", "thresholds": { "mode": "absolute", "steps": [ { "color": "red", "value": null }, { "color": "green", "value": 1 } ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["last"], "fields": "", "values": false }, "orientation": "auto", "colorMode": "background", "graphMode": "none", "justifyMode": "auto", "textMode": "value", "wideLayout": true, "noValue": "NO DATA" },
+      "description": "AWS/ApplicationELB HealthyHostCount for the Shaka target group. No data is not treated as healthy."
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "ALB unhealthy targets",
+      "gridPos": { "x": 6, "y": 0, "w": 6, "h": 4 },
+      "datasource": { "type": "cloudwatch", "uid": "$datasource" },
+      "targets": [
+        {
+          "datasource": { "type": "cloudwatch", "uid": "$datasource" },
+          "dimensions": { "LoadBalancer": "$load_balancer", "TargetGroup": "$target_group" },
+          "expression": "",
+          "id": "A",
+          "matchExact": true,
+          "metricName": "UnHealthyHostCount",
+          "namespace": "AWS/ApplicationELB",
+          "period": "60",
+          "queryMode": "Metrics",
+          "refId": "A",
+          "region": "$region",
+          "statistic": "Maximum"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short", "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 1 } ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["last"], "fields": "", "values": false }, "orientation": "auto", "colorMode": "background", "graphMode": "none", "justifyMode": "auto", "textMode": "value", "wideLayout": true, "noValue": "NO DATA" },
+      "description": "AWS/ApplicationELB UnHealthyHostCount. Any value above zero should page; missing data needs investigation rather than a green fallback."
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "ALB requests and target responses",
+      "gridPos": { "x": 0, "y": 4, "w": 12, "h": 8 },
+      "datasource": { "type": "cloudwatch", "uid": "$datasource" },
+      "targets": [
+        { "datasource": { "type": "cloudwatch", "uid": "$datasource" }, "dimensions": { "LoadBalancer": "$load_balancer" }, "expression": "", "id": "A", "matchExact": true, "metricName": "RequestCount", "namespace": "AWS/ApplicationELB", "period": "60", "queryMode": "Metrics", "refId": "A", "region": "$region", "statistic": "Sum" },
+        { "datasource": { "type": "cloudwatch", "uid": "$datasource" }, "dimensions": { "LoadBalancer": "$load_balancer", "TargetGroup": "$target_group" }, "expression": "", "id": "B", "matchExact": true, "metricName": "HTTPCode_Target_2XX_Count", "namespace": "AWS/ApplicationELB", "period": "60", "queryMode": "Metrics", "refId": "B", "region": "$region", "statistic": "Sum" },
+        { "datasource": { "type": "cloudwatch", "uid": "$datasource" }, "dimensions": { "LoadBalancer": "$load_balancer", "TargetGroup": "$target_group" }, "expression": "", "id": "C", "matchExact": true, "metricName": "HTTPCode_Target_4XX_Count", "namespace": "AWS/ApplicationELB", "period": "60", "queryMode": "Metrics", "refId": "C", "region": "$region", "statistic": "Sum" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "options": { "legend": { "calcs": ["lastNotNull"], "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "multi", "sort": "none" } },
+      "description": "Traffic counters use Sum because CloudWatch reports ALB counts per period. Idle no-data/zero request periods are distinct from target health."
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "ALB 5xx and connection errors",
+      "gridPos": { "x": 12, "y": 4, "w": 12, "h": 8 },
+      "datasource": { "type": "cloudwatch", "uid": "$datasource" },
+      "targets": [
+        { "datasource": { "type": "cloudwatch", "uid": "$datasource" }, "dimensions": { "LoadBalancer": "$load_balancer" }, "expression": "", "id": "A", "matchExact": true, "metricName": "HTTPCode_ELB_5XX_Count", "namespace": "AWS/ApplicationELB", "period": "60", "queryMode": "Metrics", "refId": "A", "region": "$region", "statistic": "Sum" },
+        { "datasource": { "type": "cloudwatch", "uid": "$datasource" }, "dimensions": { "LoadBalancer": "$load_balancer", "TargetGroup": "$target_group" }, "expression": "", "id": "B", "matchExact": true, "metricName": "HTTPCode_Target_5XX_Count", "namespace": "AWS/ApplicationELB", "period": "60", "queryMode": "Metrics", "refId": "B", "region": "$region", "statistic": "Sum" },
+        { "datasource": { "type": "cloudwatch", "uid": "$datasource" }, "dimensions": { "LoadBalancer": "$load_balancer", "TargetGroup": "$target_group" }, "expression": "", "id": "C", "matchExact": true, "metricName": "TargetConnectionErrorCount", "namespace": "AWS/ApplicationELB", "period": "60", "queryMode": "Metrics", "refId": "C", "region": "$region", "statistic": "Sum" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "options": { "legend": { "calcs": ["lastNotNull"], "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "multi", "sort": "none" } },
+      "description": "ALB-generated and target-generated failures are separated so infrastructure and backend errors do not collapse into one signal."
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "ALB target response time",
+      "gridPos": { "x": 0, "y": 12, "w": 12, "h": 8 },
+      "datasource": { "type": "cloudwatch", "uid": "$datasource" },
+      "targets": [
+        { "datasource": { "type": "cloudwatch", "uid": "$datasource" }, "dimensions": { "LoadBalancer": "$load_balancer", "TargetGroup": "$target_group" }, "expression": "", "id": "A", "matchExact": true, "metricName": "TargetResponseTime", "namespace": "AWS/ApplicationELB", "period": "60", "queryMode": "Metrics", "refId": "A", "region": "$region", "statistic": "Average" },
+        { "datasource": { "type": "cloudwatch", "uid": "$datasource" }, "dimensions": { "LoadBalancer": "$load_balancer", "TargetGroup": "$target_group" }, "expression": "", "id": "B", "matchExact": true, "metricName": "TargetResponseTime", "namespace": "AWS/ApplicationELB", "period": "60", "queryMode": "Metrics", "refId": "B", "region": "$region", "statistic": "p95" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "options": { "legend": { "calcs": ["lastNotNull"], "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "multi", "sort": "none" } },
+      "description": "TargetResponseTime uses average plus p95 to show user-impact latency without folding it into app JVM/HTTP panels."
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "ALB connections and capacity",
+      "gridPos": { "x": 12, "y": 12, "w": 12, "h": 8 },
+      "datasource": { "type": "cloudwatch", "uid": "$datasource" },
+      "targets": [
+        { "datasource": { "type": "cloudwatch", "uid": "$datasource" }, "dimensions": { "LoadBalancer": "$load_balancer" }, "expression": "", "id": "A", "matchExact": true, "metricName": "ActiveConnectionCount", "namespace": "AWS/ApplicationELB", "period": "60", "queryMode": "Metrics", "refId": "A", "region": "$region", "statistic": "Sum" },
+        { "datasource": { "type": "cloudwatch", "uid": "$datasource" }, "dimensions": { "LoadBalancer": "$load_balancer" }, "expression": "", "id": "B", "matchExact": true, "metricName": "NewConnectionCount", "namespace": "AWS/ApplicationELB", "period": "60", "queryMode": "Metrics", "refId": "B", "region": "$region", "statistic": "Sum" },
+        { "datasource": { "type": "cloudwatch", "uid": "$datasource" }, "dimensions": { "LoadBalancer": "$load_balancer" }, "expression": "", "id": "C", "matchExact": true, "metricName": "ConsumedLCUs", "namespace": "AWS/ApplicationELB", "period": "60", "queryMode": "Metrics", "refId": "C", "region": "$region", "statistic": "Sum" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "options": { "legend": { "calcs": ["lastNotNull"], "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "multi", "sort": "none" } },
+      "description": "Capacity and connection metrics are infrastructure context for the dedicated ALB dashboard, not part of the app/host overview."
+    }
+  ],
+  "refresh": "1m",
+  "schemaVersion": 39,
+  "tags": ["shaka", "${environment}", "terraform", "cloudwatch", "alb"],
+  "templating": {
+    "list": [
+      { "current": { "selected": false, "text": "CloudWatch", "value": "${cloudwatch_datasource_uid}" }, "hide": 2, "label": "CloudWatch datasource", "name": "datasource", "query": "cloudwatch", "type": "datasource" },
+      { "current": { "selected": false, "text": "${environment}", "value": "${environment}" }, "hide": 2, "label": "Environment", "name": "environment", "query": "${environment}", "type": "constant" },
+      { "current": { "selected": false, "text": "${cloudwatch_region}", "value": "${cloudwatch_region}" }, "hide": 2, "label": "AWS region", "name": "region", "query": "${cloudwatch_region}", "type": "constant" },
+      { "current": { "selected": false, "text": "${alb_load_balancer_arn_suffix}", "value": "${alb_load_balancer_arn_suffix}" }, "hide": 2, "label": "ALB ARN suffix", "name": "load_balancer", "query": "${alb_load_balancer_arn_suffix}", "type": "constant" },
+      { "current": { "selected": false, "text": "${alb_target_group_arn_suffix}", "value": "${alb_target_group_arn_suffix}" }, "hide": 2, "label": "Target group ARN suffix", "name": "target_group", "query": "${alb_target_group_arn_suffix}", "type": "constant" }
+    ]
+  },
+  "time": { "from": "now-6h", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "Shaka ALB CloudWatch",
+  "uid": "shaka-alb-cloudwatch-${environment}",
+  "version": 1,
+  "weekStart": ""
+}

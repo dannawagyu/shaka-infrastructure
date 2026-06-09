@@ -120,12 +120,14 @@ jobs:
           TF_VAR_prometheus_datasource_uid: ${{ vars.GRAFANA_PROMETHEUS_DATASOURCE_UID }}
           TF_VAR_cloudwatch_datasource_uid: ${{ vars.GRAFANA_CLOUDWATCH_DATASOURCE_UID }}
           TF_VAR_cloudwatch_region: ${{ vars.AWS_REGION || 'ap-southeast-2' }}
+          TF_VAR_alb_load_balancer_arn_suffix: ${{ vars.SHAKA_ALB_LOAD_BALANCER_ARN_SUFFIX }}
+          TF_VAR_alb_target_group_arn_suffix: ${{ vars.SHAKA_ALB_TARGET_GROUP_ARN_SUFFIX }}
           TF_VAR_loki_datasource_uid: ${{ vars.GRAFANA_LOKI_DATASOURCE_UID }}
           TF_VAR_tempo_datasource_uid: ${{ vars.GRAFANA_TEMPO_DATASOURCE_UID }}
         run: |
           set -euo pipefail
           missing=()
-          for name in TF_VAR_grafana_cloud_url TF_VAR_grafana_auth TF_VAR_prometheus_datasource_uid TF_VAR_cloudwatch_datasource_uid TF_VAR_cloudwatch_region TF_VAR_loki_datasource_uid TF_VAR_tempo_datasource_uid; do
+          for name in TF_VAR_grafana_cloud_url TF_VAR_grafana_auth TF_VAR_prometheus_datasource_uid TF_VAR_cloudwatch_datasource_uid TF_VAR_cloudwatch_region TF_VAR_alb_load_balancer_arn_suffix TF_VAR_alb_target_group_arn_suffix TF_VAR_loki_datasource_uid TF_VAR_tempo_datasource_uid; do
             if [[ -z "${!name:-}" ]]; then
               missing+=("$name")
             fi
@@ -136,10 +138,21 @@ jobs:
           fi
           TF_VAR_grafana_cloud_url="${TF_VAR_grafana_cloud_url%/}"
           echo "TF_VAR_grafana_cloud_url=$TF_VAR_grafana_cloud_url" >> "$GITHUB_ENV"
-          case "$TF_VAR_grafana_cloud_url" in
-            https://*.grafana.net|https://*.grafana.com) ;;
+          python3 - <<'PY'
+          import os
+          from urllib.parse import urlparse
+
+          parsed = urlparse(os.environ["TF_VAR_grafana_cloud_url"])
+          host = parsed.hostname or ""
+          if parsed.scheme != "https" or parsed.username or parsed.password or parsed.path not in ("", "/"):
+              raise SystemExit("Invalid Grafana Cloud URL")
+          if not (host.endswith(".grafana.net") or host.endswith(".grafana.com")):
+              raise SystemExit("Invalid Grafana Cloud URL")
+          PY
+          case "$TF_VAR_alb_load_balancer_arn_suffix:$TF_VAR_alb_target_group_arn_suffix" in
+            app/*:targetgroup/*|net/*:targetgroup/*|gwy/*:targetgroup/*) ;;
             *)
-              echo "Invalid Grafana Cloud URL" >&2
+              echo "Invalid ALB ARN suffix inputs" >&2
               exit 1
               ;;
           esac
@@ -164,6 +177,8 @@ jobs:
           TF_VAR_prometheus_datasource_uid: ${{ vars.GRAFANA_PROMETHEUS_DATASOURCE_UID }}
           TF_VAR_cloudwatch_datasource_uid: ${{ vars.GRAFANA_CLOUDWATCH_DATASOURCE_UID }}
           TF_VAR_cloudwatch_region: ${{ vars.AWS_REGION || 'ap-southeast-2' }}
+          TF_VAR_alb_load_balancer_arn_suffix: ${{ vars.SHAKA_ALB_LOAD_BALANCER_ARN_SUFFIX }}
+          TF_VAR_alb_target_group_arn_suffix: ${{ vars.SHAKA_ALB_TARGET_GROUP_ARN_SUFFIX }}
           TF_VAR_loki_datasource_uid: ${{ vars.GRAFANA_LOKI_DATASOURCE_UID }}
           TF_VAR_tempo_datasource_uid: ${{ vars.GRAFANA_TEMPO_DATASOURCE_UID }}
         run: terraform -chdir=terraform/observability/grafana plan -input=false -out=grafana-dashboard.tfplan
@@ -176,6 +191,8 @@ jobs:
           TF_VAR_prometheus_datasource_uid: ${{ vars.GRAFANA_PROMETHEUS_DATASOURCE_UID }}
           TF_VAR_cloudwatch_datasource_uid: ${{ vars.GRAFANA_CLOUDWATCH_DATASOURCE_UID }}
           TF_VAR_cloudwatch_region: ${{ vars.AWS_REGION || 'ap-southeast-2' }}
+          TF_VAR_alb_load_balancer_arn_suffix: ${{ vars.SHAKA_ALB_LOAD_BALANCER_ARN_SUFFIX }}
+          TF_VAR_alb_target_group_arn_suffix: ${{ vars.SHAKA_ALB_TARGET_GROUP_ARN_SUFFIX }}
           TF_VAR_loki_datasource_uid: ${{ vars.GRAFANA_LOKI_DATASOURCE_UID }}
           TF_VAR_tempo_datasource_uid: ${{ vars.GRAFANA_TEMPO_DATASOURCE_UID }}
         run: terraform -chdir=terraform/observability/grafana apply -input=false grafana-dashboard.tfplan
