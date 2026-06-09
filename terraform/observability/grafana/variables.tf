@@ -47,13 +47,13 @@ variable "alb_target_group_arn_suffix" {
   }
 }
 
-variable "phase1_rds_db_instance_identifier" {
+variable "rds_db_instance_identifier" {
   description = "RDS DBInstanceIdentifier used by Phase 1 migration-window alerts. Pass each environment's intended DB instance explicitly so missing configuration fails closed."
   type        = string
 
   validation {
-    condition     = length(trimspace(var.phase1_rds_db_instance_identifier)) > 0 && trimspace(var.phase1_rds_db_instance_identifier) != "*"
-    error_message = "phase1_rds_db_instance_identifier must be a specific RDS DBInstanceIdentifier, not empty or '*'."
+    condition     = length(trimspace(var.rds_db_instance_identifier)) > 0 && trimspace(var.rds_db_instance_identifier) != "*"
+    error_message = "rds_db_instance_identifier must be a specific RDS DBInstanceIdentifier, not empty or '*'."
   }
 }
 

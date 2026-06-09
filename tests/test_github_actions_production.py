@@ -48,10 +48,12 @@ class GitHubActionsProductionTest(unittest.TestCase):
         self.assertIn("TF_VAR_prometheus_datasource_uid: ${{ vars.GRAFANA_PROMETHEUS_DATASOURCE_UID }}", text)
         self.assertIn("TF_VAR_cloudwatch_datasource_uid: ${{ vars.GRAFANA_CLOUDWATCH_DATASOURCE_UID }}", text)
         self.assertIn("TF_VAR_cloudwatch_region: ${{ vars.AWS_REGION || 'ap-southeast-2' }}", text)
+        self.assertIn("TF_VAR_rds_db_instance_identifier: ${{ vars.SHAKA_RDS_DB_INSTANCE_IDENTIFIER }}", text)
         self.assertIn("TF_VAR_alb_load_balancer_arn_suffix: ${{ vars.SHAKA_ALB_LOAD_BALANCER_ARN_SUFFIX }}", text)
         self.assertIn("TF_VAR_alb_target_group_arn_suffix: ${{ vars.SHAKA_ALB_TARGET_GROUP_ARN_SUFFIX }}", text)
         self.assertIn("TF_VAR_loki_datasource_uid: ${{ vars.GRAFANA_LOKI_DATASOURCE_UID }}", text)
         self.assertIn("TF_VAR_tempo_datasource_uid: ${{ vars.GRAFANA_TEMPO_DATASOURCE_UID }}", text)
+        self.assertNotIn("phase1_rds_db_instance_identifier", text)
 
         job_env = text.split("    steps:", 1)[0]
         for grafana_job_env in [
@@ -60,6 +62,7 @@ class GitHubActionsProductionTest(unittest.TestCase):
             "TF_VAR_prometheus_datasource_uid: ${{ vars.GRAFANA_PROMETHEUS_DATASOURCE_UID }}",
             "TF_VAR_cloudwatch_datasource_uid: ${{ vars.GRAFANA_CLOUDWATCH_DATASOURCE_UID }}",
             "TF_VAR_cloudwatch_region: ${{ vars.AWS_REGION || 'ap-southeast-2' }}",
+            "TF_VAR_rds_db_instance_identifier: ${{ vars.SHAKA_RDS_DB_INSTANCE_IDENTIFIER }}",
             "TF_VAR_alb_load_balancer_arn_suffix: ${{ vars.SHAKA_ALB_LOAD_BALANCER_ARN_SUFFIX }}",
             "TF_VAR_alb_target_group_arn_suffix: ${{ vars.SHAKA_ALB_TARGET_GROUP_ARN_SUFFIX }}",
             "TF_VAR_loki_datasource_uid: ${{ vars.GRAFANA_LOKI_DATASOURCE_UID }}",

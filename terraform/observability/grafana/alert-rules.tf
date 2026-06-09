@@ -261,7 +261,7 @@ resource "grafana_rule_group" "shaka_phase1_rds_migration_window" {
           # broadly-permissioned CloudWatch datasource cannot surface unrelated
           # DB instance identifiers in alert evaluations or notifications.
           dimensions = {
-            DBInstanceIdentifier = var.phase1_rds_db_instance_identifier
+            DBInstanceIdentifier = var.rds_db_instance_identifier
           }
           expression    = ""
           id            = "A"
