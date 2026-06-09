@@ -135,7 +135,7 @@ for metric in CPUUtilization DatabaseConnections FreeStorageSpace ReadLatency Wr
   require_pattern "$rds_dashboard" "$metric" "RDS dashboard must include $metric"
 done
 require_pattern "$alerts_tf" 'var[.]cloudwatch_datasource_uid' "RDS alert rules must use the CloudWatch datasource"
-require_pattern "$alerts_tf" 'DBInstanceIdentifier[[:space:]]*=[[:space:]]*var[.]phase1_rds_db_instance_identifier' "RDS alert rules must scope DBInstanceIdentifier explicitly"
+require_pattern "$alerts_tf" 'DBInstanceIdentifier[[:space:]]*=[[:space:]]*var[.]rds_db_instance_identifier' "RDS alert rules must scope DBInstanceIdentifier explicitly"
 reject_pattern "$alerts_tf" 'DBInstanceIdentifier[[:space:]]*=[[:space:]]*"[*]"' "RDS alert rules must not use wildcard DBInstanceIdentifier"
 for alert_uid in \
   phase1_rds_cpu_high \
