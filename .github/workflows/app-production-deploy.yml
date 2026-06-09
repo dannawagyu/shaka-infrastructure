@@ -15,6 +15,24 @@ on:
         description: "Required: deploy-shaka-production"
         required: true
         type: string
+      db_migration_mode:
+        description: "DB migration gate mode: none blocks pending migrations, validate-only reports without deploy, apply migrates after approval"
+        required: true
+        default: "none"
+        type: choice
+        options:
+          - none
+          - validate-only
+          - apply
+      db_migration_confirmation:
+        description: "Required when db_migration_mode=apply: migrate-shaka-production"
+        required: false
+        type: string
+      db_migration_baseline_existing_schema:
+        description: "Apply only: allow Flyway baselineOnMigrate for first adoption on the existing production schema"
+        required: false
+        default: false
+        type: boolean
       otel_java_agent_version:
         description: "OpenTelemetry Java agent version to install when OTLP is enabled"
         required: false
@@ -27,6 +45,7 @@ on:
 
 permissions:
   contents: read
+  id-token: write
 
 concurrency:
   group: shaka-production-app-deploy
@@ -118,6 +137,15 @@ jobs:
           printf '%s\n' "$version" > ../artifact/release-version.txt
           echo "release_version=$version" >> "$GITHUB_OUTPUT"
 
+      - name: Stage server migration source
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p migration-source/src/main/resources/db
+          cp server/build.gradle server/settings.gradle server/gradlew migration-source/
+          cp -R server/gradle migration-source/
+          cp -R server/src/main/resources/db/migration migration-source/src/main/resources/db/
+
       - name: Upload verified server artifact
         uses: actions/upload-artifact@v4
         with:
@@ -126,10 +154,36 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
+      - name: Upload server migration source
+        uses: actions/upload-artifact@v4
+        with:
+          name: shaka-server-migration-source
+          path: migration-source/
+          if-no-files-found: error
+          retention-days: 1
+
+  approve_db_migration:
+    name: Approve production DB migration apply
+    needs: build-server-artifact
+    if: github.ref_name == 'main' && inputs.db_migration_mode == 'apply'
+    runs-on: ubuntu-latest
+    environment: production-db-migration
+    steps:
+      - name: Validate production DB migration confirmation
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${{ inputs.db_migration_confirmation }}" != "migrate-shaka-production" ]]; then
+            echo "db_migration_mode=apply requires db_migration_confirmation=migrate-shaka-production" >&2
+            exit 1
+          fi
+
   deploy:
     name: Deploy Shaka app from verified artifact
-    needs: build-server-artifact
-    if: github.ref_name == 'main'
+    needs:
+      - build-server-artifact
+      - approve_db_migration
+    if: always() && github.ref_name == 'main' && needs['build-server-artifact'].result == 'success' && (inputs.db_migration_mode != 'apply' || needs.approve_db_migration.result == 'success')
     # Deploy must run on the self-hosted runner because the production EC2 SG
     # only allows SSH from a fixed home network IP. GitHub-hosted runners have
     # dynamic egress IPs and would always time out on port 22.
@@ -156,6 +210,14 @@ jobs:
       OTEL_JAVA_AGENT_VERSION: ${{ inputs.otel_java_agent_version }}
       OTEL_JAVA_AGENT_SHA256: ${{ inputs.otel_java_agent_sha256 }}
       RELEASE_VERSION: ${{ needs.build-server-artifact.outputs.release_version }}
+      DB_MIGRATION_MODE: ${{ inputs.db_migration_mode }}
+      DB_MIGRATION_CONFIRMATION: ${{ inputs.db_migration_confirmation }}
+      SHAKA_FLYWAY_BASELINE_ON_MIGRATE: ${{ inputs.db_migration_baseline_existing_schema }}
+      SHAKA_PROD_DB_URL: ${{ secrets.SHAKA_PROD_DB_URL }}
+      SHAKA_PROD_DB_USERNAME: ${{ secrets.SHAKA_PROD_DB_USERNAME }}
+      SHAKA_PROD_DB_PASSWORD: ${{ secrets.SHAKA_PROD_DB_PASSWORD }}
+      SHAKA_RDS_DB_INSTANCE_IDENTIFIER: ${{ vars.SHAKA_RDS_DB_INSTANCE_IDENTIFIER }}
+      AWS_REGION: ${{ vars.AWS_REGION || 'ap-southeast-2' }}
     steps:
       - name: Validate production deploy confirmation and inputs
         shell: bash
@@ -165,14 +227,39 @@ jobs:
             echo "Production app deploy requires deploy_confirmation=deploy-shaka-production" >&2
             exit 1
           fi
+          case "${DB_MIGRATION_MODE}" in
+            none|validate-only|apply) ;;
+            *)
+              echo "db_migration_mode must be one of: none, validate-only, apply" >&2
+              exit 1
+              ;;
+          esac
+          if [[ "${DB_MIGRATION_MODE}" == "apply" && "${DB_MIGRATION_CONFIRMATION}" != "migrate-shaka-production" ]]; then
+            echo "db_migration_mode=apply requires db_migration_confirmation=migrate-shaka-production" >&2
+            exit 1
+          fi
+          case "${SHAKA_FLYWAY_BASELINE_ON_MIGRATE}" in
+            true|false) ;;
+            *)
+              echo "db_migration_baseline_existing_schema must be true or false" >&2
+              exit 1
+              ;;
+          esac
           missing=()
-          for name in SHAKA_PROD_HOST SHAKA_PROD_SSH_KEY SHAKA_PROD_SSH_KNOWN_HOSTS SHAKA_PROD_URL GRAFANA_CLOUD_OTLP_ENDPOINT GRAFANA_CLOUD_OTLP_USERNAME GRAFANA_CLOUD_OTLP_PASSWORD GRAFANA_PROMETHEUS_REMOTE_WRITE_URL GRAFANA_PROMETHEUS_REMOTE_WRITE_USER GRAFANA_PROMETHEUS_REMOTE_WRITE_TOKEN RELEASE_VERSION OTEL_JAVA_AGENT_SHA256; do
+          for name in SHAKA_PROD_HOST SHAKA_PROD_SSH_KEY SHAKA_PROD_SSH_KNOWN_HOSTS SHAKA_PROD_URL GRAFANA_CLOUD_OTLP_ENDPOINT GRAFANA_CLOUD_OTLP_USERNAME GRAFANA_CLOUD_OTLP_PASSWORD GRAFANA_PROMETHEUS_REMOTE_WRITE_URL GRAFANA_PROMETHEUS_REMOTE_WRITE_USER GRAFANA_PROMETHEUS_REMOTE_WRITE_TOKEN RELEASE_VERSION OTEL_JAVA_AGENT_SHA256 SHAKA_PROD_DB_URL SHAKA_PROD_DB_USERNAME SHAKA_PROD_DB_PASSWORD; do
             if [[ -z "${!name:-}" ]]; then
               missing+=("$name")
             fi
           done
+          if [[ "${DB_MIGRATION_MODE}" == "apply" && -z "${SHAKA_RDS_DB_INSTANCE_IDENTIFIER:-}" ]]; then
+            missing+=("SHAKA_RDS_DB_INSTANCE_IDENTIFIER")
+          fi
           if (( ${#missing[@]} > 0 )); then
             printf 'Missing required production environment values: %s\n' "${missing[*]}" >&2
+            exit 1
+          fi
+          if [[ "${SHAKA_PROD_DB_URL}" =~ [Pp][Aa][Ss][Ss][Ww][Oo][Rr][Dd]= ]]; then
+            echo "SHAKA_PROD_DB_URL must not embed a password; pass DB credentials separately" >&2
             exit 1
           fi
           python3 - <<'PY'
@@ -219,6 +306,12 @@ jobs:
           name: shaka-server-production-artifact
           path: server-artifact
 
+      - name: Download server migration source
+        uses: actions/download-artifact@v4
+        with:
+          name: shaka-server-migration-source
+          path: server-migration-source
+
       - name: Stage server artifact for infra deploy script
         shell: bash
         run: |
@@ -227,7 +320,32 @@ jobs:
           cp "server-artifact/shaka-${RELEASE_VERSION}.jar" "server/build/libs/shaka-${RELEASE_VERSION}.jar"
           test "$(cat server-artifact/release-version.txt)" = "$RELEASE_VERSION"
 
+      - name: Set up Java 21 for Flyway Gradle tasks
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Configure AWS credentials for migration apply backup verification
+        if: inputs.db_migration_mode == 'apply'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ${{ env.AWS_REGION }}
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+
+      - name: Gate production database migrations before app mutation
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x server-migration-source/gradlew
+          infra/scripts/run-shaka-db-migration.sh
+        env:
+          SHAKA_SERVER_DIR: ${{ github.workspace }}/server-migration-source
+
       - name: Deploy server artifact and OTLP runtime through infra
+        if: inputs.db_migration_mode != 'validate-only'
         shell: bash
         run: |
           set -euo pipefail

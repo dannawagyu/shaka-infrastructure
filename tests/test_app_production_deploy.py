@@ -7,6 +7,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github" / "workflows" / "app-production-deploy.yml"
 SCRIPT = ROOT / "scripts" / "deploy-shaka-production.sh"
+MIGRATION_SCRIPT = ROOT / "scripts" / "run-shaka-db-migration.sh"
 ALLOY = ROOT / "deploy" / "grafana" / "alloy-otlp-config.alloy"
 SYSTEMD = ROOT / "deploy" / "systemd" / "shaka-server.service"
 
@@ -17,6 +18,14 @@ class AppProductionDeployTest(unittest.TestCase):
         self.assertIn("if: github.ref_name == 'main'", text)
         self.assertIn("environment: production", text)
         self.assertIn("deploy_confirmation=deploy-shaka-production", text)
+        self.assertIn("db_migration_mode:", text)
+        self.assertIn("- validate-only", text)
+        self.assertIn("- apply", text)
+        self.assertIn("db_migration_confirmation:", text)
+        self.assertIn("db_migration_baseline_existing_schema:", text)
+        self.assertIn("Approve production DB migration apply", text)
+        self.assertIn("environment: production-db-migration", text)
+        self.assertIn("id-token: write", text)
         self.assertIn("build-server-artifact:", text)
         self.assertIn("Deploy Shaka app from verified artifact", text)
         self.assertIn("repository: dannawagyu/shaka-server-spring", text)
@@ -31,12 +40,53 @@ class AppProductionDeployTest(unittest.TestCase):
         self.assertIn("OTEL_JAVA_AGENT_SHA256", text)
         self.assertIn("actions/upload-artifact@v4", text)
         self.assertIn("actions/download-artifact@v4", text)
+        self.assertIn("name: shaka-server-migration-source", text)
+        self.assertIn("Stage server migration source", text)
+        self.assertIn("cp -R server/src/main/resources/db/migration migration-source/src/main/resources/db/", text)
+        self.assertIn("Gate production database migrations before app mutation", text)
+        self.assertIn("infra/scripts/run-shaka-db-migration.sh", text)
+        self.assertLess(
+            text.index("Gate production database migrations before app mutation"),
+            text.index("Deploy server artifact and OTLP runtime through infra"),
+        )
+        self.assertIn("if: inputs.db_migration_mode != 'validate-only'", text)
+        self.assertIn("SHAKA_PROD_DB_URL: ${{ secrets.SHAKA_PROD_DB_URL }}", text)
+        self.assertIn("SHAKA_PROD_DB_USERNAME: ${{ secrets.SHAKA_PROD_DB_USERNAME }}", text)
+        self.assertIn("SHAKA_PROD_DB_PASSWORD: ${{ secrets.SHAKA_PROD_DB_PASSWORD }}", text)
+        self.assertIn("SHAKA_RDS_DB_INSTANCE_IDENTIFIER: ${{ vars.SHAKA_RDS_DB_INSTANCE_IDENTIFIER }}", text)
+        self.assertIn("SHAKA_FLYWAY_BASELINE_ON_MIGRATE: ${{ inputs.db_migration_baseline_existing_schema }}", text)
+        self.assertIn("Set up Java 21 for Flyway Gradle tasks", text)
+        self.assertIn("Configure AWS credentials for migration apply backup verification", text)
+        self.assertIn("aws-actions/configure-aws-credentials@v4", text)
         self.assertIn("SHAKA_PROD_URL", text)
         self.assertIn("GRAFANA_PROMETHEUS_REMOTE_WRITE_URL", text)
         self.assertIn("GRAFANA_PROMETHEUS_REMOTE_WRITE_USER", text)
         self.assertIn("GRAFANA_PROMETHEUS_REMOTE_WRITE_TOKEN", text)
         self.assertNotIn("GRAFANA_CLOUD_LOKI_API_KEY", text)
         self.assertNotIn("TEMPO_OTLP_PASSWORD", text)
+
+    def test_database_migration_script_fails_closed_and_uses_ssh_tunnel(self):
+        text = MIGRATION_SCRIPT.read_text(encoding="utf-8")
+        self.assertIn("DB_MIGRATION_MODE must be one of: none, validate-only, apply", text)
+        self.assertIn("pending Flyway migration detected", text)
+        self.assertIn("DB_MIGRATION_CONFIRMATION=migrate-shaka-production", text)
+        self.assertIn("flywayInfo", text)
+        self.assertIn("flywayValidate", text)
+        self.assertIn("flywayMigrate", text)
+        self.assertIn("-Dflyway.ignoreMigrationPatterns=*:pending", text)
+        self.assertIn("SHAKA_FLYWAY_BASELINE_ON_MIGRATE must be true or false", text)
+        self.assertIn("-Dflyway.baselineOnMigrate=true", text)
+        self.assertIn("-Dflyway.baselineVersion=0", text)
+        self.assertIn("StrictHostKeyChecking=yes", text)
+        self.assertIn("ExitOnForwardFailure=yes", text)
+        self.assertIn("-L \"127.0.0.1:${LOCAL_DB_PORT}:${DB_HOST}:${DB_PORT}\"", text)
+        self.assertIn("SHAKA_PROD_DB_URL must not embed a password", text)
+        self.assertIn("::add-mask::%s", text)
+        self.assertIn("aws rds describe-db-instances", text)
+        self.assertIn("BackupRetentionPeriod", text)
+        self.assertIn("LatestRestorableTime", text)
+        self.assertNotIn("echo \"$SHAKA_PROD_DB_PASSWORD", text)
+        self.assertNotIn("set -x", text)
 
     def test_deploy_script_preflights_agent_and_combined_alloy_credentials(self):
         text = SCRIPT.read_text(encoding="utf-8")
