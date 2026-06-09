@@ -11,11 +11,13 @@ ALLOY = ROOT / "deploy" / "grafana" / "alloy-otlp-config.alloy"
 SYSTEMD = ROOT / "deploy" / "systemd" / "shaka-server.service"
 
 class AppProductionDeployTest(unittest.TestCase):
-    def test_workflow_is_infra_owned_and_uses_single_production_environment(self):
+    def test_workflow_is_infra_owned_and_uses_protected_production_environments(self):
         text = WORKFLOW.read_text(encoding="utf-8")
         self.assertIn("workflow_dispatch:", text)
         self.assertIn("if: github.ref_name == 'main'", text)
-        self.assertIn("environment: production", text)
+        self.assertIn("environment:", text)
+        self.assertIn("production-db-migration", text)
+        self.assertIn("|| 'production'", text)
         self.assertIn("deploy_confirmation=deploy-shaka-production", text)
         self.assertIn("build-server-artifact:", text)
         self.assertIn("Deploy Shaka app from verified artifact", text)
@@ -90,6 +92,72 @@ class AppProductionDeployTest(unittest.TestCase):
             self.assertIn("parsed.username or parsed.password", text)
             self.assertNotIn('".grafana.net/api/prom/push" in', text)
             self.assertNotIn("https://*.grafana.net/api/prom/push", text)
+
+    def test_workflow_requires_migration_inventory_and_operator_evidence_gate(self):
+        text = WORKFLOW.read_text(encoding="utf-8")
+        self.assertIn("migration_confirmation:", text)
+        self.assertIn("Required: migration-reviewed-backup-ready", text)
+        self.assertIn("rds_backup_evidence_ref:", text)
+        self.assertIn("flyway_validation_evidence_ref:", text)
+        self.assertIn("migration_runbook_ref:", text)
+        self.assertIn("flyway_migration_count: ${{ steps.flyway_inventory.outputs.flyway_migration_count }}", text)
+        self.assertIn("flyway_migration_fingerprint: ${{ steps.flyway_inventory.outputs.flyway_migration_fingerprint }}", text)
+        self.assertIn("Capture Flyway migration inventory", text)
+        self.assertIn("src/main/resources/db/migration", text)
+        self.assertIn("sha256sum", text)
+        self.assertIn("SHAKA_MIGRATION_CONFIRMATION: ${{ inputs.migration_confirmation }}", text)
+        self.assertIn("SHAKA_RDS_BACKUP_EVIDENCE_REF: ${{ inputs.rds_backup_evidence_ref }}", text)
+        self.assertIn("SHAKA_FLYWAY_VALIDATION_EVIDENCE_REF: ${{ inputs.flyway_validation_evidence_ref }}", text)
+        self.assertIn("SHAKA_MIGRATION_RUNBOOK_REF: ${{ inputs.migration_runbook_ref }}", text)
+        self.assertIn("SHAKA_FLYWAY_MIGRATION_COUNT: ${{ needs.build-server-artifact.outputs.flyway_migration_count }}", text)
+        self.assertIn("SHAKA_FLYWAY_MIGRATION_FINGERPRINT: ${{ needs.build-server-artifact.outputs.flyway_migration_fingerprint }}", text)
+        self.assertIn("db_migration_mode", text)
+        self.assertIn("db_migration_confirmation", text)
+        self.assertIn("rds_backup_evidence", text)
+        self.assertIn("db_migration_baseline_existing_schema", text)
+
+    def test_workflow_exposes_migration_aware_deploy_inputs(self):
+        text = WORKFLOW.read_text(encoding="utf-8")
+        self.assertIn("db_migration_mode:", text)
+        self.assertIn("- none", text)
+        self.assertIn("- validate-only", text)
+        self.assertIn("- apply", text)
+        self.assertIn("db_migration_confirmation:", text)
+        self.assertIn("migrate-shaka-production", text)
+        self.assertIn("rds_backup_evidence:", text)
+        self.assertIn("db_migration_baseline_existing_schema:", text)
+        self.assertIn("production-db-migration", text)
+        self.assertIn("DB_MIGRATION_MODE: ${{ inputs.db_migration_mode }}", text)
+        self.assertIn("RDS_BACKUP_EVIDENCE: ${{ inputs.rds_backup_evidence }}", text)
+
+    def test_deploy_script_fails_closed_without_migration_gate_evidence(self):
+        text = SCRIPT.read_text(encoding="utf-8")
+        self.assertIn("SHAKA_MIGRATION_CONFIRMATION", text)
+        self.assertIn("migration-reviewed-backup-ready", text)
+        self.assertIn("SHAKA_RDS_BACKUP_EVIDENCE_REF", text)
+        self.assertIn("SHAKA_FLYWAY_VALIDATION_EVIDENCE_REF", text)
+        self.assertIn("SHAKA_MIGRATION_RUNBOOK_REF", text)
+        self.assertIn("SHAKA_FLYWAY_MIGRATION_COUNT", text)
+        self.assertIn("SHAKA_FLYWAY_MIGRATION_FINGERPRINT", text)
+        self.assertIn("migration gate evidence must be a sanitized reference", text)
+        self.assertIn("Production deploy migration gate passed", text)
+        self.assertIn("run_flyway migrate", text)
+        self.assertIn("DB_MIGRATION_CONFIRMATION=migrate-shaka-production", text)
+
+    def test_deploy_script_runs_migration_gate_before_app_mutation(self):
+        text = SCRIPT.read_text(encoding="utf-8")
+        migration_gate = text.index("run_remote_migration_gate")
+        app_install = text.index("sudo install -o ubuntu -g ubuntu -m 0644")
+        self.assertLess(migration_gate, app_install)
+        self.assertIn("DB_MIGRATION_MODE must be one of none, validate-only, apply", text)
+        self.assertIn("DB migration apply requires DB_MIGRATION_CONFIRMATION=migrate-shaka-production", text)
+        self.assertIn("RDS_BACKUP_EVIDENCE is required before DB migration apply", text)
+        self.assertIn("RDS_BACKUP_EVIDENCE must be a sanitized PITR/snapshot reference", text)
+        self.assertIn("--shaka.flyway.command=${command}", text)
+        self.assertIn("run_flyway assert-current", text)
+        self.assertIn("run_flyway migrate", text)
+        self.assertIn("DB migration validate-only completed; skipping app deploy by request.", text)
+        self.assertNotIn("echo $RDS_BACKUP_EVIDENCE", text)
 
     def test_alloy_config_is_otlp_first_for_all_three_signals(self):
         text = ALLOY.read_text(encoding="utf-8")

@@ -15,6 +15,22 @@ on:
         description: "Required: deploy-shaka-production"
         required: true
         type: string
+      migration_confirmation:
+        description: "Required: migration-reviewed-backup-ready"
+        required: true
+        type: string
+      rds_backup_evidence_ref:
+        description: "Sanitized RDS automated backup/PITR or snapshot evidence reference"
+        required: true
+        type: string
+      flyway_validation_evidence_ref:
+        description: "Sanitized Flyway info/validate review evidence reference"
+        required: true
+        type: string
+      migration_runbook_ref:
+        description: "Sanitized migration runbook or approval reference"
+        required: true
+        type: string
       otel_java_agent_version:
         description: "OpenTelemetry Java agent version to install when OTLP is enabled"
         required: false
@@ -24,6 +40,28 @@ on:
         description: "Expected SHA-256 for the OpenTelemetry Java agent jar"
         required: true
         type: string
+      db_migration_mode:
+        description: "Database migration gate: none=deploy only when current, validate-only=inspect and stop, apply=migrate then deploy"
+        required: true
+        default: "none"
+        type: choice
+        options:
+          - none
+          - validate-only
+          - apply
+      db_migration_confirmation:
+        description: "Required only for apply: migrate-shaka-production"
+        required: false
+        type: string
+      rds_backup_evidence:
+        description: "Required only for apply: sanitized PITR/snapshot evidence reference"
+        required: false
+        type: string
+      db_migration_baseline_existing_schema:
+        description: "Allow Flyway baselineOnMigrate for the reviewed first adoption on an existing schema"
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -39,6 +77,8 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       release_version: ${{ steps.version.outputs.release_version }}
+      flyway_migration_count: ${{ steps.flyway_inventory.outputs.flyway_migration_count }}
+      flyway_migration_fingerprint: ${{ steps.flyway_inventory.outputs.flyway_migration_fingerprint }}
     steps:
       - name: Validate trusted server ref and deploy key
         shell: bash
@@ -79,6 +119,30 @@ jobs:
         with:
           distribution: temurin
           java-version: "21"
+
+      - name: Capture Flyway migration inventory
+        id: flyway_inventory
+        shell: bash
+        working-directory: server
+        run: |
+          set -euo pipefail
+          migration_dir="src/main/resources/db/migration"
+          if [[ ! -d "$migration_dir" ]]; then
+            echo "flyway_migration_count=0" >> "$GITHUB_OUTPUT"
+            echo "flyway_migration_fingerprint=none" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          mapfile -t migrations < <(find "$migration_dir" -type f -name '*.sql' | sort)
+          count="${#migrations[@]}"
+          if (( count == 0 )); then
+            fingerprint="none"
+          else
+            fingerprint="$(sha256sum "${migrations[@]}" | sha256sum | awk '{print $1}')"
+          fi
+          echo "Flyway migration files: $count"
+          echo "Flyway migration fingerprint: $fingerprint"
+          echo "flyway_migration_count=$count" >> "$GITHUB_OUTPUT"
+          echo "flyway_migration_fingerprint=$fingerprint" >> "$GITHUB_OUTPUT"
 
       - name: Build and verify server artifact
         id: version
@@ -138,7 +202,8 @@ jobs:
     # self-hosted macOS runner added to the repo/org could pick up the job
     # and would receive production secrets + SSH deploy capability.
     runs-on: [self-hosted, macOS, shaka-production-deploy]
-    environment: production
+    environment:
+      name: ${{ inputs.db_migration_mode == 'apply' && 'production-db-migration' || 'production' }}
     env:
       SHAKA_PROD_HOST: ${{ secrets.SHAKA_PROD_HOST }}
       SHAKA_PROD_SSH_USER: ${{ secrets.SHAKA_PROD_SSH_USER || 'ubuntu' }}
@@ -156,6 +221,16 @@ jobs:
       OTEL_JAVA_AGENT_VERSION: ${{ inputs.otel_java_agent_version }}
       OTEL_JAVA_AGENT_SHA256: ${{ inputs.otel_java_agent_sha256 }}
       RELEASE_VERSION: ${{ needs.build-server-artifact.outputs.release_version }}
+      DB_MIGRATION_MODE: ${{ inputs.db_migration_mode }}
+      DB_MIGRATION_CONFIRMATION: ${{ inputs.db_migration_confirmation }}
+      RDS_BACKUP_EVIDENCE: ${{ inputs.rds_backup_evidence }}
+      SHAKA_FLYWAY_BASELINE_ON_MIGRATE: ${{ inputs.db_migration_baseline_existing_schema }}
+      SHAKA_MIGRATION_CONFIRMATION: ${{ inputs.migration_confirmation }}
+      SHAKA_RDS_BACKUP_EVIDENCE_REF: ${{ inputs.rds_backup_evidence_ref }}
+      SHAKA_FLYWAY_VALIDATION_EVIDENCE_REF: ${{ inputs.flyway_validation_evidence_ref }}
+      SHAKA_MIGRATION_RUNBOOK_REF: ${{ inputs.migration_runbook_ref }}
+      SHAKA_FLYWAY_MIGRATION_COUNT: ${{ needs.build-server-artifact.outputs.flyway_migration_count }}
+      SHAKA_FLYWAY_MIGRATION_FINGERPRINT: ${{ needs.build-server-artifact.outputs.flyway_migration_fingerprint }}
     steps:
       - name: Validate production deploy confirmation and inputs
         shell: bash
@@ -166,7 +241,7 @@ jobs:
             exit 1
           fi
           missing=()
-          for name in SHAKA_PROD_HOST SHAKA_PROD_SSH_KEY SHAKA_PROD_SSH_KNOWN_HOSTS SHAKA_PROD_URL GRAFANA_CLOUD_OTLP_ENDPOINT GRAFANA_CLOUD_OTLP_USERNAME GRAFANA_CLOUD_OTLP_PASSWORD GRAFANA_PROMETHEUS_REMOTE_WRITE_URL GRAFANA_PROMETHEUS_REMOTE_WRITE_USER GRAFANA_PROMETHEUS_REMOTE_WRITE_TOKEN RELEASE_VERSION OTEL_JAVA_AGENT_SHA256; do
+          for name in SHAKA_PROD_HOST SHAKA_PROD_SSH_KEY SHAKA_PROD_SSH_KNOWN_HOSTS SHAKA_PROD_URL GRAFANA_CLOUD_OTLP_ENDPOINT GRAFANA_CLOUD_OTLP_USERNAME GRAFANA_CLOUD_OTLP_PASSWORD GRAFANA_PROMETHEUS_REMOTE_WRITE_URL GRAFANA_PROMETHEUS_REMOTE_WRITE_USER GRAFANA_PROMETHEUS_REMOTE_WRITE_TOKEN RELEASE_VERSION OTEL_JAVA_AGENT_SHA256 SHAKA_MIGRATION_CONFIRMATION SHAKA_RDS_BACKUP_EVIDENCE_REF SHAKA_FLYWAY_VALIDATION_EVIDENCE_REF SHAKA_MIGRATION_RUNBOOK_REF SHAKA_FLYWAY_MIGRATION_COUNT SHAKA_FLYWAY_MIGRATION_FINGERPRINT; do
             if [[ -z "${!name:-}" ]]; then
               missing+=("$name")
             fi

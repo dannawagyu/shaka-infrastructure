@@ -22,6 +22,12 @@ Required environment variables:
   GRAFANA_PROMETHEUS_REMOTE_WRITE_URL
   GRAFANA_PROMETHEUS_REMOTE_WRITE_USER
   GRAFANA_PROMETHEUS_REMOTE_WRITE_TOKEN
+  SHAKA_MIGRATION_CONFIRMATION
+  SHAKA_RDS_BACKUP_EVIDENCE_REF
+  SHAKA_FLYWAY_VALIDATION_EVIDENCE_REF
+  SHAKA_MIGRATION_RUNBOOK_REF
+  SHAKA_FLYWAY_MIGRATION_COUNT
+  SHAKA_FLYWAY_MIGRATION_FINGERPRINT
 
 Optional environment variables:
   SHAKA_INFRA_DIR                 defaults to repository root
@@ -29,6 +35,10 @@ Optional environment variables:
   OTEL_SERVICE_NAME               defaults to shaka-server
   OTEL_DEPLOYMENT_ENVIRONMENT     defaults to prod
   OTEL_JAVA_AGENT_VERSION         defaults to 2.15.0
+  DB_MIGRATION_MODE               none|validate-only|apply; defaults to none
+  DB_MIGRATION_CONFIRMATION       required for apply: migrate-shaka-production
+  RDS_BACKUP_EVIDENCE             required for apply; sanitized PITR/snapshot reference
+  SHAKA_FLYWAY_BASELINE_ON_MIGRATE true only for reviewed first-time Flyway adoption
 USAGE
 }
 
@@ -49,11 +59,21 @@ SERVER_DIR="${SHAKA_SERVER_DIR:?SHAKA_SERVER_DIR is required}"
 : "${GRAFANA_PROMETHEUS_REMOTE_WRITE_URL:?GRAFANA_PROMETHEUS_REMOTE_WRITE_URL is required}"
 : "${GRAFANA_PROMETHEUS_REMOTE_WRITE_USER:?GRAFANA_PROMETHEUS_REMOTE_WRITE_USER is required}"
 : "${GRAFANA_PROMETHEUS_REMOTE_WRITE_TOKEN:?GRAFANA_PROMETHEUS_REMOTE_WRITE_TOKEN is required}"
+: "${SHAKA_MIGRATION_CONFIRMATION:?SHAKA_MIGRATION_CONFIRMATION is required}"
+: "${SHAKA_RDS_BACKUP_EVIDENCE_REF:?SHAKA_RDS_BACKUP_EVIDENCE_REF is required}"
+: "${SHAKA_FLYWAY_VALIDATION_EVIDENCE_REF:?SHAKA_FLYWAY_VALIDATION_EVIDENCE_REF is required}"
+: "${SHAKA_MIGRATION_RUNBOOK_REF:?SHAKA_MIGRATION_RUNBOOK_REF is required}"
+: "${SHAKA_FLYWAY_MIGRATION_COUNT:?SHAKA_FLYWAY_MIGRATION_COUNT is required}"
+: "${SHAKA_FLYWAY_MIGRATION_FINGERPRINT:?SHAKA_FLYWAY_MIGRATION_FINGERPRINT is required}"
 
 SHAKA_PROD_SSH_USER="${SHAKA_PROD_SSH_USER:-ubuntu}"
 OTEL_SERVICE_NAME="${OTEL_SERVICE_NAME:-shaka-server}"
 OTEL_DEPLOYMENT_ENVIRONMENT="${OTEL_DEPLOYMENT_ENVIRONMENT:-prod}"
 OTEL_JAVA_AGENT_VERSION="${OTEL_JAVA_AGENT_VERSION:-2.15.0}"
+DB_MIGRATION_MODE="${DB_MIGRATION_MODE:-none}"
+DB_MIGRATION_CONFIRMATION="${DB_MIGRATION_CONFIRMATION:-}"
+RDS_BACKUP_EVIDENCE="${RDS_BACKUP_EVIDENCE:-}"
+SHAKA_FLYWAY_BASELINE_ON_MIGRATE="${SHAKA_FLYWAY_BASELINE_ON_MIGRATE:-false}"
 REMOTE_DIR="/opt/shaka"
 RELEASES_DIR="${REMOTE_DIR}/releases"
 CURRENT_LINK="${REMOTE_DIR}/current.jar"
@@ -102,6 +122,65 @@ if [[ ! "$OTEL_JAVA_AGENT_SHA256" =~ ^[0-9a-fA-F]{64}$ ]]; then
   echo "ERROR: OTEL_JAVA_AGENT_SHA256 must be a 64-character SHA-256 hex digest" >&2
   exit 1
 fi
+
+case "$DB_MIGRATION_MODE" in
+  none|validate-only|apply) ;;
+  *)
+    echo "ERROR: DB_MIGRATION_MODE must be one of none, validate-only, apply" >&2
+    exit 1
+    ;;
+esac
+case "$SHAKA_FLYWAY_BASELINE_ON_MIGRATE" in
+  true|false) ;;
+  *)
+    echo "ERROR: SHAKA_FLYWAY_BASELINE_ON_MIGRATE must be true or false" >&2
+    exit 1
+    ;;
+esac
+if [[ "$DB_MIGRATION_MODE" == "apply" ]]; then
+  if [[ "$DB_MIGRATION_CONFIRMATION" != "migrate-shaka-production" ]]; then
+    echo "ERROR: DB migration apply requires DB_MIGRATION_CONFIRMATION=migrate-shaka-production" >&2
+    exit 1
+  fi
+  if [[ -z "$RDS_BACKUP_EVIDENCE" ]]; then
+    echo "ERROR: RDS_BACKUP_EVIDENCE is required before DB migration apply" >&2
+    exit 1
+  fi
+  if [[ "$RDS_BACKUP_EVIDENCE" == *://* || "$RDS_BACKUP_EVIDENCE" =~ [[:space:]] || "$RDS_BACKUP_EVIDENCE" =~ (secret|password|token|key) ]]; then
+    echo "ERROR: RDS_BACKUP_EVIDENCE must be a sanitized PITR/snapshot reference, not a secret or URL" >&2
+    exit 1
+  fi
+fi
+
+validate_migration_gate_evidence() {
+  if [[ "$SHAKA_MIGRATION_CONFIRMATION" != "migration-reviewed-backup-ready" ]]; then
+    echo "ERROR: SHAKA_MIGRATION_CONFIRMATION must be migration-reviewed-backup-ready" >&2
+    exit 1
+  fi
+  if [[ ! "$SHAKA_FLYWAY_MIGRATION_COUNT" =~ ^[0-9]+$ ]]; then
+    echo "ERROR: SHAKA_FLYWAY_MIGRATION_COUNT must be a non-negative integer" >&2
+    exit 1
+  fi
+  if [[ "$SHAKA_FLYWAY_MIGRATION_FINGERPRINT" != "none" && ! "$SHAKA_FLYWAY_MIGRATION_FINGERPRINT" =~ ^[0-9a-f]{64}$ ]]; then
+    echo "ERROR: SHAKA_FLYWAY_MIGRATION_FINGERPRINT must be none or a SHA-256 hex digest" >&2
+    exit 1
+  fi
+  for name in SHAKA_RDS_BACKUP_EVIDENCE_REF SHAKA_FLYWAY_VALIDATION_EVIDENCE_REF SHAKA_MIGRATION_RUNBOOK_REF; do
+    value="${!name}"
+    lowered="$(printf '%s' "$value" | tr '[:upper:]' '[:lower:]')"
+    if [[ ${#value} -lt 6 || ${#value} -gt 180 || ! "$value" =~ ^[A-Za-z0-9._:@/+,-]+$ ]]; then
+      echo "ERROR: migration gate evidence must be a sanitized reference for $name" >&2
+      exit 1
+    fi
+    if [[ "$lowered" == *secret* || "$lowered" == *password* || "$lowered" == *token* || "$lowered" == *webhook* ]]; then
+      echo "ERROR: migration gate evidence must be a sanitized reference for $name" >&2
+      exit 1
+    fi
+  done
+  echo "Production deploy migration gate passed: ${SHAKA_FLYWAY_MIGRATION_COUNT} Flyway migrations (${SHAKA_FLYWAY_MIGRATION_FINGERPRINT})"
+}
+
+validate_migration_gate_evidence
 
 quote_env_value() {
   local value="$1"
@@ -238,6 +317,69 @@ REMOTE_PREFLIGHT
 
 REMOTE_STAGING_DIR="$("${SSH[@]}" 'tmpdir="$(mktemp -d /tmp/shaka-infra-deploy.XXXXXX)" && chmod 0700 "$tmpdir" && printf "%s" "$tmpdir"')"
 "${SCP[@]}" "$LOCAL_JAR" "$NGINX_CONF" "$SYSTEMD_CONF" "$ENV_EXAMPLE" "$ALLOY_CONFIG" "$OBS_ENV_FILE" "${SHAKA_PROD_SSH_USER}@${SHAKA_PROD_HOST}:${REMOTE_STAGING_DIR}/"
+
+run_remote_migration_gate() {
+  "${SSH[@]}" bash -s -- "$JAR_FILE" "$REMOTE_STAGING_DIR" "$DB_MIGRATION_MODE" "$DB_MIGRATION_CONFIRMATION" "$RDS_BACKUP_EVIDENCE" "$SHAKA_FLYWAY_BASELINE_ON_MIGRATE" <<'REMOTE_MIGRATION_GATE'
+set -euo pipefail
+JAR_FILE="$1"
+REMOTE_STAGING_DIR="$2"
+DB_MIGRATION_MODE="$3"
+DB_MIGRATION_CONFIRMATION="$4"
+RDS_BACKUP_EVIDENCE="$5"
+SHAKA_FLYWAY_BASELINE_ON_MIGRATE="$6"
+STAGED_JAR="${REMOTE_STAGING_DIR}/${JAR_FILE}"
+if [[ ! -f "$STAGED_JAR" ]]; then
+  echo "ERROR: staged Shaka jar missing for DB migration gate" >&2
+  exit 1
+fi
+if [[ ! -f /etc/shaka/env ]]; then
+  echo "ERROR: /etc/shaka/env is required for DB migration gate" >&2
+  exit 1
+fi
+set -a
+# shellcheck disable=SC1091
+. /etc/shaka/env
+set +a
+export SHAKA_FLYWAY_BASELINE_ON_MIGRATE
+run_flyway() {
+  local command="$1"
+  java -jar "$STAGED_JAR" "--shaka.flyway.command=${command}"
+}
+case "$DB_MIGRATION_MODE" in
+  none)
+    echo "Checking production DB migration state before app deploy..."
+    run_flyway assert-current
+    ;;
+  validate-only)
+    echo "Running production DB migration validate-only gate; app deploy will be skipped."
+    run_flyway info
+    run_flyway validate
+    ;;
+  apply)
+    if [[ "$DB_MIGRATION_CONFIRMATION" != "migrate-shaka-production" || -z "$RDS_BACKUP_EVIDENCE" ]]; then
+      echo "ERROR: DB migration apply requires confirmation and backup evidence" >&2
+      exit 1
+    fi
+    echo "Running approved production DB migration gate with sanitized RDS backup evidence present..."
+    run_flyway info
+    run_flyway validate
+    run_flyway migrate
+    run_flyway validate
+    run_flyway assert-current
+    ;;
+  *)
+    echo "ERROR: unsupported DB_MIGRATION_MODE" >&2
+    exit 1
+    ;;
+esac
+REMOTE_MIGRATION_GATE
+}
+
+run_remote_migration_gate
+if [[ "$DB_MIGRATION_MODE" == "validate-only" ]]; then
+  echo "DB migration validate-only completed; skipping app deploy by request."
+  exit 0
+fi
 
 "${SSH[@]}" bash -s -- "$JAR_FILE" "$REMOTE_STAGING_DIR" "$(basename "$OBS_ENV_FILE")" <<'REMOTE_DEPLOY'
 set -euo pipefail
