@@ -48,6 +48,8 @@ class GitHubActionsProductionTest(unittest.TestCase):
         self.assertIn("TF_VAR_prometheus_datasource_uid: ${{ vars.GRAFANA_PROMETHEUS_DATASOURCE_UID }}", text)
         self.assertIn("TF_VAR_cloudwatch_datasource_uid: ${{ vars.GRAFANA_CLOUDWATCH_DATASOURCE_UID }}", text)
         self.assertIn("TF_VAR_cloudwatch_region: ${{ vars.AWS_REGION || 'ap-southeast-2' }}", text)
+        self.assertIn("TF_VAR_alb_load_balancer_arn_suffix: ${{ vars.SHAKA_ALB_LOAD_BALANCER_ARN_SUFFIX }}", text)
+        self.assertIn("TF_VAR_alb_target_group_arn_suffix: ${{ vars.SHAKA_ALB_TARGET_GROUP_ARN_SUFFIX }}", text)
         self.assertIn("TF_VAR_loki_datasource_uid: ${{ vars.GRAFANA_LOKI_DATASOURCE_UID }}", text)
         self.assertIn("TF_VAR_tempo_datasource_uid: ${{ vars.GRAFANA_TEMPO_DATASOURCE_UID }}", text)
 
@@ -58,14 +60,18 @@ class GitHubActionsProductionTest(unittest.TestCase):
             "TF_VAR_prometheus_datasource_uid: ${{ vars.GRAFANA_PROMETHEUS_DATASOURCE_UID }}",
             "TF_VAR_cloudwatch_datasource_uid: ${{ vars.GRAFANA_CLOUDWATCH_DATASOURCE_UID }}",
             "TF_VAR_cloudwatch_region: ${{ vars.AWS_REGION || 'ap-southeast-2' }}",
+            "TF_VAR_alb_load_balancer_arn_suffix: ${{ vars.SHAKA_ALB_LOAD_BALANCER_ARN_SUFFIX }}",
+            "TF_VAR_alb_target_group_arn_suffix: ${{ vars.SHAKA_ALB_TARGET_GROUP_ARN_SUFFIX }}",
             "TF_VAR_loki_datasource_uid: ${{ vars.GRAFANA_LOKI_DATASOURCE_UID }}",
             "TF_VAR_tempo_datasource_uid: ${{ vars.GRAFANA_TEMPO_DATASOURCE_UID }}",
         ]:
             self.assertNotIn(grafana_job_env, job_env)
         self.assertIn('TF_VAR_grafana_cloud_url="${TF_VAR_grafana_cloud_url%/}"', text)
         self.assertIn('echo "TF_VAR_grafana_cloud_url=$TF_VAR_grafana_cloud_url" >> "$GITHUB_ENV"', text)
-        self.assertIn("case \"$TF_VAR_grafana_cloud_url\" in", text)
-        self.assertIn("https://*.grafana.net|https://*.grafana.com", text)
+        self.assertIn("from urllib.parse import urlparse", text)
+        self.assertIn("parsed.hostname", text)
+        self.assertIn("parsed.path", text)
+        self.assertNotIn("https://*.grafana.net|https://*.grafana.com", text)
         self.assertIn("terraform -chdir=terraform/observability/grafana init -input=false", text)
         self.assertIn("terraform -chdir=terraform/observability/grafana plan -input=false -out=grafana-dashboard.tfplan", text)
         self.assertIn("terraform -chdir=terraform/observability/grafana apply -input=false grafana-dashboard.tfplan", text)
@@ -79,6 +85,7 @@ class GitHubActionsProductionTest(unittest.TestCase):
         self.assertIn('EnvironmentFile=-/etc/alloy/grafana-cloud.env', text)
         self.assertIn('sys.env("GRAFANA_PROMETHEUS_REMOTE_WRITE_URL")', text)
         self.assertIn('sys.env("GRAFANA_PROMETHEUS_REMOTE_WRITE_TOKEN")', text)
+        self.assertIn('sys.env("GRAFANA_CLOUD_OTLP_ENDPOINT")', text)
         self.assertNotIn('${grafana_prometheus_remote_write_token}', text)
         self.assertNotIn('${grafana_prometheus_remote_write_url}', text)
 
@@ -89,6 +96,9 @@ class GitHubActionsProductionTest(unittest.TestCase):
         self.assertIn("http://169.254.169.254/latest/api/token", text)
         self.assertIn("http://169.254.169.254/latest/meta-data/instance-id", text)
         self.assertIn("Environment=EC2_INSTANCE_ID=$${INSTANCE_ID}", text)
+        env_loop = text.split("for var in ", 1)[1].split("; do", 1)[0]
+        self.assertNotIn("EC2_INSTANCE_ID", env_loop)
+        self.assertIn("Required environment variable EC2_INSTANCE_ID is missing", text)
         self.assertIn("systemctl enable --now nginx", text)
         self.assertIn("systemctl enable --now alloy", text)
         self.assertNotIn("systemctl enable shaka-server", text)

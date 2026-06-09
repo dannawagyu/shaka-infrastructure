@@ -11,6 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 GRAFANA_DIR = ROOT / "terraform" / "observability" / "grafana"
 SHAKA_OVERVIEW_DASHBOARD = GRAFANA_DIR / "dashboards" / "shaka-prod-overview.json.tftpl"
 RDS_DASHBOARD = GRAFANA_DIR / "dashboards" / "amazon-rds.json.tftpl"
+ALB_DASHBOARD = GRAFANA_DIR / "dashboards" / "shaka-alb-cloudwatch.json.tftpl"
 DASHBOARDS_TF = GRAFANA_DIR / "dashboards.tf"
 VARIABLES_TF = GRAFANA_DIR / "variables.tf"
 
@@ -58,6 +59,20 @@ class GrafanaDashboardRenderingTest(unittest.TestCase):
             RDS_DASHBOARD,
             {
                 "cloudwatch_datasource_uid": "cloudwatch-test-uid",
+                "cloudwatch_region": "ap-southeast-2",
+            },
+        )
+
+    def rendered_alb_dashboard(self) -> dict:
+        return render_template(
+            ALB_DASHBOARD,
+            {
+                "cloudwatch_datasource_uid": "cloudwatch-test-uid",
+                "cloudwatch_region": "ap-southeast-2",
+                "alb_load_balancer_arn_suffix": "app/shaka-prod/abc123",
+                "alb_target_group_arn_suffix": "targetgroup/shaka-app/def456",
+                "environment_title": "Prod",
+                "environment": "prod",
             },
         )
 
@@ -207,7 +222,7 @@ class GrafanaDashboardRenderingTest(unittest.TestCase):
             self.assertEqual(panel["options"]["reduceOptions"]["calcs"], ["last"])
             self.assertEqual(panel["options"]["noValue"], no_value)
 
-    def test_cloudwatch_is_only_used_by_rds_dashboard(self) -> None:
+    def test_cloudwatch_is_only_used_by_rds_and_dedicated_alb_dashboards(self) -> None:
         overview = self.rendered_dashboard()
         overview_datasources = {
             panel.get("datasource", {}).get("type")
@@ -217,18 +232,74 @@ class GrafanaDashboardRenderingTest(unittest.TestCase):
         self.assertNotIn("cloudwatch", overview_datasources)
 
         rds = self.rendered_rds_dashboard()
-        datasource_variables = {
+        rds_variables = {
             item.get("name"): item
             for item in rds.get("templating", {}).get("list", [])
         }
-        self.assertEqual(datasource_variables["datasource"]["query"], "cloudwatch")
-        cloudwatch_targets = [
+        self.assertEqual(rds_variables["datasource"]["query"], "cloudwatch")
+        rds_cloudwatch_targets = [
             target
             for panel in iter_panels(rds)
             for target in panel.get("targets", [])
             if target.get("namespace") == "AWS/RDS"
         ]
-        self.assertGreater(len(cloudwatch_targets), 0)
+        self.assertGreater(len(rds_cloudwatch_targets), 0)
+
+        alb = self.rendered_alb_dashboard()
+        alb_cloudwatch_targets = [
+            target
+            for panel in iter_panels(alb)
+            for target in panel.get("targets", [])
+            if target.get("namespace") == "AWS/ApplicationELB"
+        ]
+        self.assertGreater(len(alb_cloudwatch_targets), 0)
+        self.assertEqual({target.get("region") for target in alb_cloudwatch_targets}, {"$region"})
+        self.assertIn("cloudwatch", {panel.get("datasource", {}).get("type") for panel in iter_panels(alb) if isinstance(panel.get("datasource"), dict)})
+
+
+    def test_service_labels_status_is_boolean_not_raw_count_mapping(self) -> None:
+        panel = self.panel("Service labels present")
+        expr = panel["targets"][0]["expr"]
+        self.assertIn("clamp_max(count", expr)
+        self.assertIn("), 1)", expr)
+        self.assertEqual(panel["fieldConfig"]["defaults"]["mappings"][0]["options"]["1"]["text"], "PRESENT")
+
+    def test_alb_dashboard_template_renders_expected_cloudwatch_contract(self) -> None:
+        dashboard = self.rendered_alb_dashboard()
+        self.assertEqual(dashboard["uid"], "shaka-alb-cloudwatch-prod")
+        self.assertEqual(dashboard["title"], "Shaka ALB CloudWatch")
+        self.assertFalse(dashboard["editable"])
+        self.assertEqual(dashboard["refresh"], "1m")
+        self.assertIn("no-data semantics", dashboard["description"])
+
+        variables = {item["name"]: item for item in dashboard["templating"]["list"]}
+        self.assertEqual(variables["datasource"]["query"], "cloudwatch")
+        self.assertEqual(variables["region"]["query"], "ap-southeast-2")
+        self.assertEqual(variables["load_balancer"]["query"], "app/shaka-prod/abc123")
+        self.assertEqual(variables["target_group"]["query"], "targetgroup/shaka-app/def456")
+
+        targets = [target for panel in iter_panels(dashboard) for target in panel.get("targets", [])]
+        alb_targets = [target for target in targets if target.get("namespace") == "AWS/ApplicationELB"]
+        self.assertGreaterEqual(len(alb_targets), 10)
+        metric_names = {target.get("metricName") for target in alb_targets}
+        for metric in {
+            "HealthyHostCount",
+            "UnHealthyHostCount",
+            "RequestCount",
+            "HTTPCode_ELB_5XX_Count",
+            "HTTPCode_Target_5XX_Count",
+            "TargetResponseTime",
+            "ActiveConnectionCount",
+            "NewConnectionCount",
+        }:
+            self.assertIn(metric, metric_names)
+        for target in alb_targets:
+            self.assertEqual(target.get("region"), "$region")
+            self.assertNotEqual(target.get("dimensions", {}).get("LoadBalancer"), "*")
+        self.assertEqual({target.get("datasource", {}).get("uid") for target in alb_targets}, {"$datasource"})
+        self.assertEqual({target.get("region") for target in alb_targets}, {"$region"})
+        self.assertIn("$load_balancer", {target.get("dimensions", {}).get("LoadBalancer") for target in alb_targets})
+        self.assertTrue(any(target.get("dimensions", {}).get("TargetGroup") == "$target_group" for target in alb_targets))
 
     def test_loki_and_tempo_queries_avoid_sensitive_or_high_cardinality_filters(self) -> None:
         dashboard = self.rendered_dashboard()
@@ -281,23 +352,35 @@ class GrafanaDashboardRenderingTest(unittest.TestCase):
     def test_terraform_wires_dashboard_datasource_uids_without_literal_secrets(self) -> None:
         combined = "\n".join(
             path.read_text(encoding="utf-8")
-            for path in [DASHBOARDS_TF, VARIABLES_TF, SHAKA_OVERVIEW_DASHBOARD, RDS_DASHBOARD]
+            for path in [DASHBOARDS_TF, VARIABLES_TF, SHAKA_OVERVIEW_DASHBOARD, RDS_DASHBOARD, ALB_DASHBOARD]
         )
         self.assertIn("prometheus_datasource_uid = var.prometheus_datasource_uid", combined)
         self.assertIn("cloudwatch_datasource_uid = var.cloudwatch_datasource_uid", combined)
+        self.assertIn("alb_load_balancer_arn_suffix", combined)
+        self.assertIn("alb_target_group_arn_suffix", combined)
         self.assertIn("loki_datasource_uid       = var.loki_datasource_uid", combined)
         self.assertIn("tempo_datasource_uid      = var.tempo_datasource_uid", combined)
         for forbidden in FORBIDDEN_LITERAL_FRAGMENTS:
             self.assertNotIn(forbidden, combined)
         self.assertIsNone(re.search(r"\b\d{12}\b", RDS_DASHBOARD.read_text(encoding="utf-8")))
 
-    def test_terraform_registers_rds_dashboard_in_existing_shaka_folder(self) -> None:
+    def test_terraform_registers_rds_and_alb_dashboards_in_existing_shaka_folder(self) -> None:
         text = DASHBOARDS_TF.read_text(encoding="utf-8")
         self.assertIn('resource "grafana_dashboard" "shaka_amazon_rds"', text)
         resource_block = text.split('resource "grafana_dashboard" "shaka_amazon_rds"', 1)[1]
         self.assertIn("folder = grafana_folder.shaka_observability.uid", resource_block)
         self.assertIn('dashboards/amazon-rds.json.tftpl', resource_block)
         self.assertIn("overwrite = true", resource_block)
+
+        self.assertIn('resource "grafana_dashboard" "shaka_alb_cloudwatch"', text)
+        alb_block = text.split('resource "grafana_dashboard" "shaka_alb_cloudwatch"', 1)[1]
+        self.assertIn("folder = grafana_folder.shaka_observability.uid", alb_block)
+        self.assertIn("dashboards/shaka-alb-cloudwatch.json.tftpl", alb_block)
+        self.assertIn("alb_load_balancer_arn_suffix", alb_block)
+        self.assertIn("var.alb_load_balancer_arn_suffix", alb_block)
+        self.assertIn("alb_target_group_arn_suffix", alb_block)
+        self.assertIn("var.alb_target_group_arn_suffix", alb_block)
+        self.assertIn("overwrite = true", alb_block)
 
 
 if __name__ == "__main__":

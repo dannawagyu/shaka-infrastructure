@@ -30,7 +30,14 @@ PHASE1_RDS_ALERT_UIDS = {
     "phase1_rds_write_latency_high",
 }
 
-EXPLICIT_ALERT_UIDS = EXPECTED_ALERT_UIDS | PHASE1_RDS_ALERT_UIDS
+ALB_ALERT_UIDS = {
+    "alb_unhealthy_host",
+    "alb_elb_5xx",
+    "alb_target_5xx",
+    "alb_target_response_time_p95",
+}
+
+EXPLICIT_ALERT_UIDS = EXPECTED_ALERT_UIDS | PHASE1_RDS_ALERT_UIDS | ALB_ALERT_UIDS
 
 
 class GrafanaAlertingScaffoldTest(unittest.TestCase):
@@ -96,6 +103,9 @@ class GrafanaAlertingScaffoldTest(unittest.TestCase):
         self.assertIn('absent_over_time(', tf)
         self.assertIn('or vector(0)', tf)
         self.assertIn('no_data_state  = "OK"', tf)
+        self.assertIn('labels         = merge(local.shaka_alert_labels, { service_name = rule.value.service_name })', tf)
+        self.assertIn('service_name = "shaka-host"', tf)
+        self.assertIn('service_name = "shaka-server"', tf)
         self.assertNotIn('up{job=\\"shaka-server\\"}', tf)
         self.assertNotIn('up{job=\\"shaka-host\\"}', tf)
         self.assertIn('node_systemd_unit_state', tf)
@@ -150,7 +160,7 @@ class GrafanaAlertingScaffoldTest(unittest.TestCase):
         self.assertIn('service_name=\\"shaka-host\\"', tf)
         self.assertIn('deployment_environment=\\"${var.environment}\\"', tf)
         self.assertIn('absent_over_time(node_cpu_seconds_total{service_name=\\"shaka-host\\",deployment_environment=\\"${var.environment}\\"}[10m]) or vector(0)', tf)
-        self.assertIn('title     = "Shaka host metrics heartbeat missing"', tf)
+        self.assertRegex(tf, r'title\s+=\s+"Shaka host metrics heartbeat missing"')
         self.assertIn('no_data_state  = "OK"', tf)
 
     def test_memory_pressure_alert_is_available_memory_below_10_percent(self) -> None:
@@ -173,13 +183,10 @@ class GrafanaAlertingScaffoldTest(unittest.TestCase):
         self.assertIn("WagyuShark/shaka-wiki", tf)
 
     def test_otlp_alloy_pipeline_uses_only_supported_alloy_components(self) -> None:
-        # Host-level signals (system_*) are not collected in this config: the
-        # OTel hostmetrics receiver is not packaged as an Alloy component and
-        # neither is the OTel resource processor. Host metrics are collected by
-        # prometheus.exporter.unix in production user data, while this file stays
-        # OTLP-only for app telemetry. service.name and
-        # deployment.environment are set by the Java agent on every OTLP signal,
-        # so the Alloy transform only needs to inject service.instance.id.
+        # The final infra-owned Alloy config contains both app OTLP and host
+        # Unix exporter pipelines. Unsupported OTel hostmetrics/resource
+        # components remain forbidden; host labels are added in Prometheus
+        # relabeling and app resource labels come from the Java agent.
         alloy = ROOT / "deploy" / "grafana" / "alloy-otlp-config.alloy"
         self.assertTrue(alloy.is_file(), f"missing OTLP Alloy config: {alloy}")
         text = alloy.read_text()
@@ -189,14 +196,43 @@ class GrafanaAlertingScaffoldTest(unittest.TestCase):
             'sys.env("EC2_INSTANCE_ID")',
             'metrics = [otelcol.processor.transform.shaka.input]',
             'metrics = [otelcol.exporter.otlphttp.grafana_cloud.input]',
+            'prometheus.exporter.unix "shaka_host"',
+            'prometheus.scrape "shaka_host"',
+            'prometheus.remote_write "grafana_cloud"',
+            'target_label = "service_name"',
+            'replacement  = "shaka-host"',
+            'target_label = "deployment_environment"',
         ]:
             self.assertIn(phrase, text, f"OTLP Alloy config missing phrase: {phrase}")
         self.assertNotIn("otelcol.receiver.hostmetrics", text)
         self.assertNotIn("otelcol.processor.resource", text)
         self.assertNotIn('set(attributes["service.name"]', text)
         self.assertNotIn('set(attributes["deployment.environment"]', text)
-        self.assertNotIn("GRAFANA_PROMETHEUS_REMOTE_WRITE", text)
+        self.assertIn("GRAFANA_PROMETHEUS_REMOTE_WRITE_URL", text)
+        self.assertIn("GRAFANA_PROMETHEUS_REMOTE_WRITE_USER", text)
+        self.assertIn("GRAFANA_PROMETHEUS_REMOTE_WRITE_TOKEN", text)
         self.assertNotIn("glc_", text)
+
+    def test_alb_cloudwatch_alert_rules_use_dedicated_dimensions_labels_and_no_data(self) -> None:
+        tf = self.read_all_tf()
+        self.assertIn('resource "grafana_rule_group" "shaka_alb_cloudwatch"', tf)
+        self.assertIn('service_name           = "shaka-alb"', tf)
+        self.assertIn('namespace     = "AWS/ApplicationELB"', tf)
+        self.assertIn('region        = var.cloudwatch_region', tf)
+        self.assertIn('LoadBalancer = var.alb_load_balancer_arn_suffix', tf)
+        self.assertIn('TargetGroup  = var.alb_target_group_arn_suffix', tf)
+        for uid in ALB_ALERT_UIDS:
+            self.assertRegex(tf, rf'{uid}\s+=\s+\{{[\s\S]*?uid\s+=\s+"{uid}"')
+        unhealthy = re.search(r'alb_unhealthy_host\s+=\s+\{(?P<body>[\s\S]*?)\n      alb_elb_5xx', tf)
+        self.assertIsNotNone(unhealthy)
+        self.assertRegex(unhealthy.group('body'), r'metric\s+=\s+"UnHealthyHostCount"')
+        self.assertRegex(unhealthy.group('body'), r'statistic\s+=\s+"Maximum"')
+        self.assertRegex(unhealthy.group('body'), r'no_data_state\s+=\s+"Alerting"')
+        for uid in ['alb_elb_5xx', 'alb_target_5xx', 'alb_target_response_time_p95']:
+            block = re.search(rf'{uid}\s+=\s+\{{(?P<body>[\s\S]*?)\n      (?:alb_|\}}\n    )', tf)
+            self.assertIsNotNone(block, uid)
+            self.assertRegex(block.group('body'), r'no_data_state\s+=\s+"OK"')
+        self.assertNotIn("grafana_contact_point", tf)
 
 
 
