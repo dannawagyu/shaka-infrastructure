@@ -178,6 +178,11 @@ class GrafanaDashboardRenderingTest(unittest.TestCase):
             self.assertNotIn("0 * max(", target["expr"])
             self.assertEqual(panel["fieldConfig"]["defaults"]["mappings"][0]["options"]["1"]["text"], "LIVE")
 
+        traffic_panel = self.panel("Backend HTTP traffic live")
+        traffic_zero = traffic_panel["fieldConfig"]["defaults"]["mappings"][0]["options"]["0"]
+        self.assertEqual(traffic_zero["text"], "NO TRAFFIC")
+        self.assertEqual(traffic_zero["color"], "blue")
+
     def test_status_stat_panels_use_current_samples_not_stale_last_not_null(self) -> None:
         dashboard = self.rendered_dashboard()
         status_panels = {
