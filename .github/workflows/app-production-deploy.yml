@@ -12,17 +12,35 @@ on:
         required: false
         type: string
       deploy_confirmation:
-        description: "Required: deploy-shaka-production"
-        required: true
+        description: "Required unless db_migration_mode=validate-only: deploy-shaka-production"
+        required: false
         type: string
+      db_migration_mode:
+        description: "DB migration gate mode: none blocks pending migrations, validate-only reports without deploy, apply migrates after approval"
+        required: true
+        default: "none"
+        type: choice
+        options:
+          - none
+          - validate-only
+          - apply
+      db_migration_confirmation:
+        description: "Required when db_migration_mode=apply: migrate-shaka-production"
+        required: false
+        type: string
+      db_migration_baseline_existing_schema:
+        description: "Apply only: allow Flyway baselineOnMigrate for first adoption on the existing production schema"
+        required: false
+        default: false
+        type: boolean
       otel_java_agent_version:
         description: "OpenTelemetry Java agent version to install when OTLP is enabled"
         required: false
         default: "2.15.0"
         type: string
       otel_java_agent_sha256:
-        description: "Expected SHA-256 for the OpenTelemetry Java agent jar"
-        required: true
+        description: "Expected SHA-256 for the OpenTelemetry Java agent jar; required unless validate-only"
+        required: false
         type: string
 
 permissions:
@@ -118,6 +136,13 @@ jobs:
           printf '%s\n' "$version" > ../artifact/release-version.txt
           echo "release_version=$version" >> "$GITHUB_OUTPUT"
 
+      - name: Stage server migration SQL
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p migration-sql
+          cp -R server/src/main/resources/db/migration migration-sql/
+
       - name: Upload verified server artifact
         uses: actions/upload-artifact@v4
         with:
@@ -126,10 +151,133 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
+      - name: Upload server migration SQL
+        uses: actions/upload-artifact@v4
+        with:
+          name: shaka-server-migration-sql
+          path: migration-sql/
+          if-no-files-found: error
+          retention-days: 1
+
+  approve_db_migration:
+    name: Approve production DB migration apply
+    needs: build-server-artifact
+    if: github.ref_name == 'main' && inputs.db_migration_mode == 'apply'
+    runs-on: ubuntu-latest
+    environment: production-db-migration
+    steps:
+      - name: Validate production DB migration confirmation
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${{ inputs.db_migration_confirmation }}" != "migrate-shaka-production" ]]; then
+            echo "db_migration_mode=apply requires db_migration_confirmation=migrate-shaka-production" >&2
+            exit 1
+          fi
+
+  db_migration_gate:
+    name: Gate production database migrations
+    needs:
+      - build-server-artifact
+      - approve_db_migration
+    if: always() && github.ref_name == 'main' && needs['build-server-artifact'].result == 'success' && (inputs.db_migration_mode != 'apply' || needs.approve_db_migration.result == 'success')
+    # The gate runs on the same fixed-egress runner as app deploy so it can SSH
+    # tunnel to private RDS without opening RDS to GitHub-hosted runners.
+    runs-on: [self-hosted, macOS, shaka-production-deploy]
+    environment: production
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      DB_MIGRATION_MODE: ${{ inputs.db_migration_mode }}
+      DB_MIGRATION_CONFIRMATION: ${{ inputs.db_migration_confirmation }}
+      SHAKA_FLYWAY_BASELINE_ON_MIGRATE: ${{ inputs.db_migration_baseline_existing_schema }}
+      SHAKA_PROD_DB_URL: ${{ secrets.SHAKA_PROD_DB_URL }}
+      SHAKA_PROD_DB_USERNAME: ${{ secrets.SHAKA_PROD_DB_USERNAME }}
+      SHAKA_PROD_DB_PASSWORD: ${{ secrets.SHAKA_PROD_DB_PASSWORD }}
+      SHAKA_PROD_HOST: ${{ secrets.SHAKA_PROD_HOST }}
+      SHAKA_PROD_SSH_USER: ${{ secrets.SHAKA_PROD_SSH_USER || 'ubuntu' }}
+      SHAKA_PROD_SSH_KEY: ${{ secrets.SHAKA_PROD_SSH_KEY }}
+      SHAKA_PROD_SSH_KNOWN_HOSTS: ${{ secrets.SHAKA_PROD_SSH_KNOWN_HOSTS }}
+      SHAKA_RDS_DB_INSTANCE_IDENTIFIER: ${{ vars.SHAKA_RDS_DB_INSTANCE_IDENTIFIER }}
+      AWS_REGION: ${{ vars.AWS_REGION || 'ap-southeast-2' }}
+      SHAKA_FLYWAY_CLI_URL: ${{ vars.SHAKA_FLYWAY_CLI_URL }}
+      SHAKA_FLYWAY_CLI_SHA256: ${{ vars.SHAKA_FLYWAY_CLI_SHA256 }}
+      SHAKA_MYSQL_CONNECTOR_J_URL: ${{ vars.SHAKA_MYSQL_CONNECTOR_J_URL }}
+      SHAKA_MYSQL_CONNECTOR_J_SHA256: ${{ vars.SHAKA_MYSQL_CONNECTOR_J_SHA256 }}
+    steps:
+      - name: Validate production DB migration inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "${DB_MIGRATION_MODE}" in
+            none|validate-only|apply) ;;
+            *)
+              echo "db_migration_mode must be one of: none, validate-only, apply" >&2
+              exit 1
+              ;;
+          esac
+          if [[ "${DB_MIGRATION_MODE}" == "apply" && "${DB_MIGRATION_CONFIRMATION}" != "migrate-shaka-production" ]]; then
+            echo "db_migration_mode=apply requires db_migration_confirmation=migrate-shaka-production" >&2
+            exit 1
+          fi
+          case "${SHAKA_FLYWAY_BASELINE_ON_MIGRATE}" in
+            true|false) ;;
+            *)
+              echo "db_migration_baseline_existing_schema must be true or false" >&2
+              exit 1
+              ;;
+          esac
+          missing=()
+          for name in SHAKA_PROD_DB_URL SHAKA_PROD_DB_USERNAME SHAKA_PROD_DB_PASSWORD SHAKA_PROD_HOST SHAKA_PROD_SSH_KEY SHAKA_PROD_SSH_KNOWN_HOSTS SHAKA_FLYWAY_CLI_URL SHAKA_FLYWAY_CLI_SHA256 SHAKA_MYSQL_CONNECTOR_J_URL SHAKA_MYSQL_CONNECTOR_J_SHA256; do
+            if [[ -z "${!name:-}" ]]; then
+              missing+=("$name")
+            fi
+          done
+          if [[ "${DB_MIGRATION_MODE}" == "apply" && -z "${SHAKA_RDS_DB_INSTANCE_IDENTIFIER:-}" ]]; then
+            missing+=("SHAKA_RDS_DB_INSTANCE_IDENTIFIER")
+          fi
+          if (( ${#missing[@]} > 0 )); then
+            printf 'Missing required production DB migration values: %s\n' "${missing[*]}" >&2
+            exit 1
+          fi
+          if [[ "${SHAKA_PROD_DB_URL}" =~ [Pp][Aa][Ss][Ss][Ww][Oo][Rr][Dd]= ]]; then
+            echo "SHAKA_PROD_DB_URL must not embed a password; pass DB credentials separately" >&2
+            exit 1
+          fi
+
+      - name: Check out infrastructure repository
+        uses: actions/checkout@v4
+        with:
+          path: infra
+
+      - name: Download server migration SQL
+        uses: actions/download-artifact@v4
+        with:
+          name: shaka-server-migration-sql
+          path: migration-sql
+
+      - name: Configure AWS credentials for migration apply backup verification
+        if: inputs.db_migration_mode == 'apply'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ${{ env.AWS_REGION }}
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+
+      - name: Run trusted Flyway migration gate before app mutation
+        shell: bash
+        run: |
+          set -euo pipefail
+          infra/scripts/run-shaka-db-migration.sh
+        env:
+          SHAKA_MIGRATION_DIR: ${{ github.workspace }}/migration-sql/migration
+
   deploy:
     name: Deploy Shaka app from verified artifact
-    needs: build-server-artifact
-    if: github.ref_name == 'main'
+    needs:
+      - build-server-artifact
+      - db_migration_gate
+    if: always() && github.ref_name == 'main' && inputs.db_migration_mode != 'validate-only' && needs['build-server-artifact'].result == 'success' && needs.db_migration_gate.result == 'success'
     # Deploy must run on the self-hosted runner because the production EC2 SG
     # only allows SSH from a fixed home network IP. GitHub-hosted runners have
     # dynamic egress IPs and would always time out on port 22.
@@ -139,6 +287,8 @@ jobs:
     # and would receive production secrets + SSH deploy capability.
     runs-on: [self-hosted, macOS, shaka-production-deploy]
     environment: production
+    permissions:
+      contents: read
     env:
       SHAKA_PROD_HOST: ${{ secrets.SHAKA_PROD_HOST }}
       SHAKA_PROD_SSH_USER: ${{ secrets.SHAKA_PROD_SSH_USER || 'ubuntu' }}
@@ -172,7 +322,7 @@ jobs:
             fi
           done
           if (( ${#missing[@]} > 0 )); then
-            printf 'Missing required production environment values: %s\n' "${missing[*]}" >&2
+            printf 'Missing required production app deploy values: %s\n' "${missing[*]}" >&2
             exit 1
           fi
           python3 - <<'PY'
