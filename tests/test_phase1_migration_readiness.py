@@ -15,6 +15,7 @@ DRIFT_SQL = ROOT / "scripts" / "sql" / "phase1-group-member-drift-check.sql"
 REPAIR_SQL = ROOT / "scripts" / "sql" / "phase1-group-member-repair.sql"
 RDS_DASHBOARD = ROOT / "terraform" / "observability" / "grafana" / "dashboards" / "amazon-rds.json.tftpl"
 ALERTS_TF = ROOT / "terraform" / "observability" / "grafana" / "alert-rules.tf"
+VARIABLES_TF = ROOT / "terraform" / "observability" / "grafana" / "variables.tf"
 PHASE1_RDS_ALERT_UIDS = {
     "phase1_rds_cpu_high",
     "phase1_rds_connections_high",
@@ -27,7 +28,7 @@ VALID_MIGRATION_SQL = """
 ALTER TABLE `group` ADD COLUMN `owner_id` BIGINT NULL;
 ALTER TABLE `group` ADD COLUMN `status` VARCHAR(20) NOT NULL DEFAULT 'ACTIVE';
 ALTER TABLE `group` ADD COLUMN `deleted_at` DATETIME(6) NULL;
-CREATE TABLE `group_member` (
+CREATE TABLE IF NOT EXISTS `group_member` (
   `id` BIGINT NOT NULL AUTO_INCREMENT,
   `group_id` BIGINT NOT NULL,
   `user_id` BIGINT NOT NULL,
@@ -39,7 +40,7 @@ CREATE TABLE `group_member` (
 INSERT INTO `group_member` (`group_id`, `user_id`, `role`, `status`)
 SELECT u.`group_id`, u.`id`, 'MEMBER', 'ACTIVE'
 FROM `user` u JOIN `group` g ON g.`id` = u.`group_id`;
-CREATE VIEW `v_group_member_drift` AS SELECT 1;
+CREATE OR REPLACE VIEW `v_group_member_drift` AS SELECT 1;
 """
 
 
@@ -93,6 +94,22 @@ class Phase1MigrationReadinessTest(unittest.TestCase):
 
     def test_readiness_script_rejects_destructive_sql(self) -> None:
         migration = self.write_sql_fixture(VALID_MIGRATION_SQL + "\nALTER TABLE `user` DROP COLUMN `group_id`;")
+
+        result = self.run_script(migration)
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("destructive SQL", result.stderr)
+
+    def test_readiness_script_rejects_drop_group_id_without_column_keyword(self) -> None:
+        migration = self.write_sql_fixture(VALID_MIGRATION_SQL + "\nALTER TABLE `user` DROP `group_id`;")
+
+        result = self.run_script(migration)
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("destructive SQL", result.stderr)
+
+    def test_readiness_script_rejects_truncate_without_table_keyword(self) -> None:
+        migration = self.write_sql_fixture(VALID_MIGRATION_SQL + "\nTRUNCATE `group_member`;")
 
         result = self.run_script(migration)
 
@@ -158,6 +175,8 @@ class Phase1MigrationReadinessTest(unittest.TestCase):
             "START TRANSACTION",
             "INSERT INTO `group_member`",
             "ON DUPLICATE KEY UPDATE",
+            "AS `member_role`",
+            "`role` = `member_role`",
             "LEFT JOIN `group`",
             "`group`.`id` IS NULL",
             "status` = 'LEFT'",
@@ -169,12 +188,14 @@ class Phase1MigrationReadinessTest(unittest.TestCase):
         ]:
             self.assertIn(phrase, repair)
         self.assertNotIn("COMMIT;", repair, "repair script must default to dry-run rollback")
+        self.assertNotIn("VALUES(`role`)", repair)
         self.assertNotIn("DROP COLUMN", repair)
         self.assertNotIn("DROP TABLE", repair)
 
     def test_db_metric_and_alert_surfaces_exist_for_migration_window(self) -> None:
         dashboard = RDS_DASHBOARD.read_text(encoding="utf-8")
         alerts = ALERTS_TF.read_text(encoding="utf-8")
+        variables = VARIABLES_TF.read_text(encoding="utf-8")
 
         for metric in [
             "CPUUtilization",
@@ -204,9 +225,13 @@ class Phase1MigrationReadinessTest(unittest.TestCase):
             'unit       = "Seconds"',
         ]:
             self.assertIn(unit, alerts)
-        self.assertIn('DBInstanceIdentifier = "*"', alerts)
+        self.assertIn("phase1_rds_db_instance_identifier", variables)
+        self.assertIn("missing configuration fails closed", variables)
+        self.assertNotIn('default     = "shaka-prod-mysql"', variables)
+        self.assertIn("DBInstanceIdentifier = var.phase1_rds_db_instance_identifier", alerts)
+        self.assertNotIn('DBInstanceIdentifier = "*"', alerts)
         self.assertIn("matchExact    = true", alerts)
-        self.assertIn("CloudWatch Metric Search supports wildcard dimension values", alerts)
+        self.assertIn("broadly-permissioned CloudWatch datasource", alerts)
         self.assertNotIn("terraform apply", alerts)
 
 

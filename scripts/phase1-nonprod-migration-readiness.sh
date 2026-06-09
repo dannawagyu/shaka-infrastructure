@@ -104,16 +104,16 @@ reject_pattern() {
   fi
 }
 
-require_pattern "$migration_sql" 'CREATE[[:space:]]+TABLE[[:space:]]+(`group_member`|group_member([[:space:](]|$))' "migration must create group_member"
+require_pattern "$migration_sql" 'CREATE[[:space:]]+TABLE[[:space:]]+(IF[[:space:]]+NOT[[:space:]]+EXISTS[[:space:]]+)?(`group_member`|group_member([[:space:](]|$))' "migration must create group_member"
 require_pattern "$migration_sql" 'ALTER[[:space:]]+TABLE[[:space:]]+(`group`|group([[:space:]]|$))' "migration must add group metadata additively"
 require_pattern "$migration_sql" 'INSERT[[:space:]]+INTO[[:space:]]+(`group_member`|group_member([[:space:](]|$))' "migration must backfill group_member"
-require_pattern "$migration_sql" 'CREATE[[:space:]]+VIEW[[:space:]]+(`v_group_member_drift`|v_group_member_drift([[:space:]]|$))' "migration must expose drift check view"
+require_pattern "$migration_sql" 'CREATE[[:space:]]+(OR[[:space:]]+REPLACE[[:space:]]+)?VIEW[[:space:]]+(`v_group_member_drift`|v_group_member_drift([[:space:]]|$))' "migration must expose drift check view"
 require_pattern "$migration_sql" 'FOREIGN[[:space:]]+KEY' "migration must include membership foreign keys"
 
 for file in "$migration_sql" "$drift_sql" "$repair_sql"; do
   reject_pattern "$file" 'DROP[[:space:]]+(TABLE|DATABASE)' "DROP table/database is forbidden"
-  reject_pattern "$file" 'DROP[[:space:]]+COLUMN[[:space:]]+(`group_id`|group_id([[:space:],;]|$))' "legacy user.group_id cleanup is Phase 2+ and forbidden"
-  reject_pattern "$file" 'TRUNCATE[[:space:]]+TABLE' "TRUNCATE is forbidden"
+  reject_pattern "$file" 'DROP[[:space:]]+(COLUMN[[:space:]]+)?(`group_id`|group_id([[:space:],;]|$))' "legacy user.group_id cleanup is Phase 2+ and forbidden"
+  reject_pattern "$file" 'TRUNCATE[[:space:]]+(TABLE[[:space:]]+)?' "TRUNCATE is forbidden"
   reject_pattern "$file" 'DELETE[[:space:]]+FROM[[:space:]]+(`user`|user([[:space:];]|$))' "deleting users is forbidden"
   reject_pattern "$file" 'terraform[[:space:]]+apply|production[[:space:]]+apply' "production apply is forbidden"
 done
@@ -135,6 +135,8 @@ for metric in CPUUtilization DatabaseConnections FreeStorageSpace ReadLatency Wr
   require_pattern "$rds_dashboard" "$metric" "RDS dashboard must include $metric"
 done
 require_pattern "$alerts_tf" 'var[.]cloudwatch_datasource_uid' "RDS alert rules must use the CloudWatch datasource"
+require_pattern "$alerts_tf" 'DBInstanceIdentifier[[:space:]]*=[[:space:]]*var[.]phase1_rds_db_instance_identifier' "RDS alert rules must scope DBInstanceIdentifier explicitly"
+reject_pattern "$alerts_tf" 'DBInstanceIdentifier[[:space:]]*=[[:space:]]*"[*]"' "RDS alert rules must not use wildcard DBInstanceIdentifier"
 for alert_uid in \
   phase1_rds_cpu_high \
   phase1_rds_connections_high \
