@@ -6,9 +6,11 @@ usage() {
 Usage: scripts/run-shaka-db-migration.sh
 
 Runs the production DB migration gate for the infra-owned server deploy workflow.
+The runner executes a trusted Flyway CLI distribution against SQL-only migration
+resources; it never runs server Gradle/build logic with production secrets.
 
 Required environment variables:
-  SHAKA_SERVER_DIR
+  SHAKA_MIGRATION_DIR
   DB_MIGRATION_MODE              one of: none, validate-only, apply
   SHAKA_PROD_DB_URL
   SHAKA_PROD_DB_USERNAME
@@ -16,6 +18,10 @@ Required environment variables:
   SHAKA_PROD_HOST
   SHAKA_PROD_SSH_KEY or SHAKA_PROD_SSH_KEY_PATH
   SHAKA_PROD_SSH_KNOWN_HOSTS
+  SHAKA_FLYWAY_CLI_URL
+  SHAKA_FLYWAY_CLI_SHA256
+  SHAKA_MYSQL_CONNECTOR_J_URL
+  SHAKA_MYSQL_CONNECTOR_J_SHA256
 
 Required when DB_MIGRATION_MODE=apply:
   DB_MIGRATION_CONFIRMATION      migrate-shaka-production
@@ -33,7 +39,7 @@ if [[ "${1:-}" == "--help" ]]; then
   exit 0
 fi
 
-SERVER_DIR="${SHAKA_SERVER_DIR:?SHAKA_SERVER_DIR is required}"
+MIGRATION_DIR="${SHAKA_MIGRATION_DIR:?SHAKA_MIGRATION_DIR is required}"
 DB_MIGRATION_MODE="${DB_MIGRATION_MODE:-none}"
 DB_MIGRATION_CONFIRMATION="${DB_MIGRATION_CONFIRMATION:-}"
 AWS_REGION="${AWS_REGION:-ap-southeast-2}"
@@ -61,13 +67,19 @@ esac
 : "${SHAKA_PROD_DB_PASSWORD:?SHAKA_PROD_DB_PASSWORD is required}"
 : "${SHAKA_PROD_HOST:?SHAKA_PROD_HOST is required}"
 : "${SHAKA_PROD_SSH_KNOWN_HOSTS:?SHAKA_PROD_SSH_KNOWN_HOSTS is required}"
+: "${SHAKA_FLYWAY_CLI_URL:?SHAKA_FLYWAY_CLI_URL is required}"
+: "${SHAKA_FLYWAY_CLI_SHA256:?SHAKA_FLYWAY_CLI_SHA256 is required}"
+: "${SHAKA_MYSQL_CONNECTOR_J_URL:?SHAKA_MYSQL_CONNECTOR_J_URL is required}"
+: "${SHAKA_MYSQL_CONNECTOR_J_SHA256:?SHAKA_MYSQL_CONNECTOR_J_SHA256 is required}"
 
-for path in "$SERVER_DIR/gradlew" "$SERVER_DIR/build.gradle" "$SERVER_DIR/src/main/resources/db/migration"; do
-  if [[ ! -e "$path" ]]; then
-    echo "ERROR: required server migration artifact not found: $path" >&2
-    exit 1
-  fi
-done
+if [[ ! -d "$MIGRATION_DIR" ]]; then
+  echo "ERROR: required migration SQL directory not found: $MIGRATION_DIR" >&2
+  exit 1
+fi
+if ! find "$MIGRATION_DIR" -maxdepth 1 -type f -name 'V*.sql' | grep -q .; then
+  echo "ERROR: migration SQL directory has no Flyway versioned migrations: $MIGRATION_DIR" >&2
+  exit 1
+fi
 
 if [[ "$SHAKA_PROD_DB_URL" =~ [Pp][Aa][Ss][Ss][Ww][Oo][Rr][Dd]= ]]; then
   echo "ERROR: SHAKA_PROD_DB_URL must not embed a password; pass credentials separately" >&2
@@ -114,14 +126,45 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
 PY
 }
 
+verify_sha256() {
+  local file="$1"
+  local expected="$2"
+  printf '%s  %s\n' "$expected" "$file" | shasum -a 256 -c - >/dev/null
+}
+
+install_flyway_cli() {
+  local work_dir="$1"
+  local cli_archive="$work_dir/flyway-cli.tgz"
+  local driver_jar="$work_dir/mysql-connector-j.jar"
+
+  curl -fsSL "$SHAKA_FLYWAY_CLI_URL" -o "$cli_archive"
+  verify_sha256 "$cli_archive" "$SHAKA_FLYWAY_CLI_SHA256"
+  mkdir -p "$work_dir/flyway"
+  tar -xzf "$cli_archive" -C "$work_dir/flyway" --strip-components=1
+
+  curl -fsSL "$SHAKA_MYSQL_CONNECTOR_J_URL" -o "$driver_jar"
+  verify_sha256 "$driver_jar" "$SHAKA_MYSQL_CONNECTOR_J_SHA256"
+  mkdir -p "$work_dir/flyway/drivers"
+  cp "$driver_jar" "$work_dir/flyway/drivers/"
+
+  if [[ ! -x "$work_dir/flyway/flyway" ]]; then
+    echo "ERROR: trusted Flyway CLI archive did not contain an executable flyway binary" >&2
+    exit 1
+  fi
+  FLYWAY_BIN="$work_dir/flyway/flyway"
+}
+
 KEY_FILE="${SHAKA_PROD_SSH_KEY_PATH:-}"
 TEMP_KEY=""
 KNOWN_HOSTS_FILE=""
 SSH_TUNNEL_PID=""
+FLYWAY_WORK_DIR=""
+info_output=""
 cleanup() {
   if [[ -n "$SSH_TUNNEL_PID" ]]; then kill "$SSH_TUNNEL_PID" >/dev/null 2>&1 || true; fi
   if [[ -n "$TEMP_KEY" && -f "$TEMP_KEY" ]]; then rm -f "$TEMP_KEY"; fi
   if [[ -n "$KNOWN_HOSTS_FILE" && -f "$KNOWN_HOSTS_FILE" ]]; then rm -f "$KNOWN_HOSTS_FILE"; fi
+  if [[ -n "$FLYWAY_WORK_DIR" && -d "$FLYWAY_WORK_DIR" ]]; then rm -rf "$FLYWAY_WORK_DIR"; fi
   rm -f "${info_output:-}"
 }
 trap cleanup EXIT
@@ -146,6 +189,33 @@ LOCAL_DB_PORT="$(choose_local_port)"
 FLYWAY_JDBC_URL="${LOCAL_DB_URL_TEMPLATE/__LOCAL_PORT__/$LOCAL_DB_PORT}"
 mask_for_github "$FLYWAY_JDBC_URL"
 
+FLYWAY_WORK_DIR="$(mktemp -d)"
+install_flyway_cli "$FLYWAY_WORK_DIR"
+
+wait_for_tunnel() {
+  local port="$1"
+  local deadline=$((SECONDS + 15))
+  while (( SECONDS < deadline )); do
+    if ! kill -0 "$SSH_TUNNEL_PID" >/dev/null 2>&1; then
+      echo "ERROR: SSH tunnel for production DB migration exited before accepting connections" >&2
+      exit 1
+    fi
+    if python3 - "$port" <<'PY' >/dev/null 2>&1
+import socket
+import sys
+
+with socket.create_connection(("127.0.0.1", int(sys.argv[1])), timeout=1):
+    pass
+PY
+    then
+      return 0
+    fi
+    sleep 1
+  done
+  echo "ERROR: SSH tunnel for production DB migration did not become reachable" >&2
+  exit 1
+}
+
 echo "Opening SSH tunnel from runner localhost to production RDS through the app host..."
 ssh -i "$KEY_FILE" \
   -o StrictHostKeyChecking=yes \
@@ -155,26 +225,20 @@ ssh -i "$KEY_FILE" \
   -L "127.0.0.1:${LOCAL_DB_PORT}:${DB_HOST}:${DB_PORT}" \
   "${SHAKA_PROD_SSH_USER}@${SHAKA_PROD_HOST}" &
 SSH_TUNNEL_PID="$!"
-sleep 2
-if ! kill -0 "$SSH_TUNNEL_PID" >/dev/null 2>&1; then
-  echo "ERROR: SSH tunnel for production DB migration failed to start" >&2
-  exit 1
-fi
+wait_for_tunnel "$LOCAL_DB_PORT"
 
 run_flyway_task() {
   local task="$1"
   shift
   local args=("$@")
-  if [[ "$task" == "flywayMigrate" && "$SHAKA_FLYWAY_BASELINE_ON_MIGRATE" == "true" ]]; then
-    args+=("-Dflyway.baselineOnMigrate=true" "-Dflyway.baselineVersion=0")
+  if [[ "$task" == "migrate" && "$SHAKA_FLYWAY_BASELINE_ON_MIGRATE" == "true" ]]; then
+    args+=("-baselineOnMigrate=true" "-baselineVersion=0")
   fi
-  (
-    cd "$SERVER_DIR"
-    FLYWAY_URL="$FLYWAY_JDBC_URL" \
-      FLYWAY_USER="$SHAKA_PROD_DB_USERNAME" \
-      FLYWAY_PASSWORD="$SHAKA_PROD_DB_PASSWORD" \
-      ./gradlew --no-daemon --console=plain "${args[@]}" "$task"
-  )
+  FLYWAY_URL="$FLYWAY_JDBC_URL" \
+    FLYWAY_USER="$SHAKA_PROD_DB_USERNAME" \
+    FLYWAY_PASSWORD="$SHAKA_PROD_DB_PASSWORD" \
+    FLYWAY_LOCATIONS="filesystem:${MIGRATION_DIR}" \
+    "$FLYWAY_BIN" "${args[@]}" "$task"
 }
 
 require_backup_readiness() {
@@ -196,6 +260,8 @@ import json
 import os
 
 metadata = json.loads(os.environ["RDS_BACKUP_METADATA"])
+if not isinstance(metadata, dict):
+    raise SystemExit("ERROR: RDS DB instance was not found")
 identifier = metadata.get("DBInstanceIdentifier")
 retention = metadata.get("BackupRetentionPeriod") or 0
 latest = metadata.get("LatestRestorableTime")
@@ -212,10 +278,10 @@ PY
 info_output="$(mktemp)"
 
 echo "Running Flyway info for production migration state..."
-run_flyway_task flywayInfo | tee "$info_output"
+run_flyway_task info | tee "$info_output"
 
 pending_migrations=0
-if grep -Eiq '(^|[[:space:]\|])Pending([[:space:]\|]|$)' "$info_output"; then
+if grep -Eiq '(^|[[:space:]|])Pending([[:space:]|]|$)' "$info_output"; then
   pending_migrations=1
 fi
 
@@ -226,9 +292,9 @@ fi
 
 echo "Running Flyway validate for production migration state..."
 if [[ "$DB_MIGRATION_MODE" == "none" ]]; then
-  run_flyway_task flywayValidate
+  run_flyway_task validate
 else
-  run_flyway_task flywayValidate "-Dflyway.ignoreMigrationPatterns=*:pending"
+  run_flyway_task validate "-ignoreMigrationPatterns=*:pending"
 fi
 
 case "$DB_MIGRATION_MODE" in
@@ -245,8 +311,8 @@ case "$DB_MIGRATION_MODE" in
     fi
     require_backup_readiness
     echo "Running Flyway migrate for approved production migration..."
-    run_flyway_task flywayMigrate
+    run_flyway_task migrate
     echo "Re-running Flyway validate after production migration..."
-    run_flyway_task flywayValidate
+    run_flyway_task validate
     ;;
 esac
