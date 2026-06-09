@@ -14,19 +14,24 @@ INSERT INTO `group_member` (
     `created_at`,
     `modified_at`
 )
-SELECT `user`.`group_id`,
-       `user`.`id`,
-       CASE WHEN `group`.`owner_id` = `user`.`id` THEN 'OWNER' ELSE 'MEMBER' END,
+SELECT `source`.`group_id`,
+       `source`.`user_id`,
+       `source`.`member_role`,
        'ACTIVE',
        CURRENT_TIMESTAMP(6),
        CURRENT_TIMESTAMP(6),
        CURRENT_TIMESTAMP(6)
-FROM `user`
-JOIN `group` ON `group`.`id` = `user`.`group_id`
-WHERE `user`.`group_id` IS NOT NULL
-  AND `user`.`is_deleted` = FALSE
+FROM (
+    SELECT `user`.`group_id` AS `group_id`,
+           `user`.`id` AS `user_id`,
+           CASE WHEN `group`.`owner_id` = `user`.`id` THEN 'OWNER' ELSE 'MEMBER' END AS `member_role`
+    FROM `user`
+    JOIN `group` ON `group`.`id` = `user`.`group_id`
+    WHERE `user`.`group_id` IS NOT NULL
+      AND `user`.`is_deleted` = FALSE
+) AS `source`
 ON DUPLICATE KEY UPDATE
-    `role` = VALUES(`role`),
+    `role` = `member_role`,
     `status` = 'ACTIVE',
     `left_at` = NULL,
     `modified_at` = CURRENT_TIMESTAMP(6);

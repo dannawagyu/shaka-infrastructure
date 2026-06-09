@@ -242,12 +242,11 @@ resource "grafana_rule_group" "shaka_phase1_rds_migration_window" {
             type = "cloudwatch"
             uid  = var.cloudwatch_datasource_uid
           }
-          # Grafana CloudWatch Metric Search supports wildcard dimension values;
-          # keep Match Exact explicit so RDS migration alerts track every metric
-          # with the single DBInstanceIdentifier dimension instead of silently
-          # depending on a datasource default or a dashboard template variable.
+          # Scope migration-window alerts to the Shaka RDS instance so a
+          # broadly-permissioned CloudWatch datasource cannot surface unrelated
+          # DB instance identifiers in alert evaluations or notifications.
           dimensions = {
-            DBInstanceIdentifier = "*"
+            DBInstanceIdentifier = var.phase1_rds_db_instance_identifier
           }
           expression    = ""
           id            = "A"

@@ -26,6 +26,16 @@ variable "cloudwatch_region" {
   default     = "ap-southeast-2"
 }
 
+variable "phase1_rds_db_instance_identifier" {
+  description = "RDS DBInstanceIdentifier used by Phase 1 migration-window alerts. Pass each environment's intended DB instance explicitly so missing configuration fails closed."
+  type        = string
+
+  validation {
+    condition     = length(trimspace(var.phase1_rds_db_instance_identifier)) > 0 && trimspace(var.phase1_rds_db_instance_identifier) != "*"
+    error_message = "phase1_rds_db_instance_identifier must be a specific RDS DBInstanceIdentifier, not empty or '*'."
+  }
+}
+
 variable "loki_datasource_uid" {
   description = "Grafana datasource UID for the Grafana Cloud Loki datasource used by dashboard log panels. This is a datasource UID, not a token or endpoint."
   type        = string
