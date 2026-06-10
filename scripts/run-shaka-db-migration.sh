@@ -27,10 +27,6 @@ Optional environment variables:
   AWS_REGION                     defaults to ap-southeast-2
   SHAKA_PROD_SSH_USER            defaults to ubuntu
   SHAKA_FLYWAY_BASELINE_ON_MIGRATE true only for reviewed first-time Flyway adoption
-  SHAKA_FLYWAY_CLI_URL             defaults to pinned Flyway commandline 10.10.0
-  SHAKA_FLYWAY_CLI_SHA256          defaults to pinned Flyway commandline 10.10.0 SHA-256
-  SHAKA_MYSQL_CONNECTOR_J_URL      defaults to pinned MySQL Connector/J 8.3.0
-  SHAKA_MYSQL_CONNECTOR_J_SHA256   defaults to pinned MySQL Connector/J 8.3.0 SHA-256
 USAGE
 }
 
@@ -45,10 +41,23 @@ DB_MIGRATION_CONFIRMATION="${DB_MIGRATION_CONFIRMATION:-}"
 AWS_REGION="${AWS_REGION:-ap-southeast-2}"
 SHAKA_PROD_SSH_USER="${SHAKA_PROD_SSH_USER:-ubuntu}"
 SHAKA_FLYWAY_BASELINE_ON_MIGRATE="${SHAKA_FLYWAY_BASELINE_ON_MIGRATE:-false}"
-SHAKA_FLYWAY_CLI_URL="${SHAKA_FLYWAY_CLI_URL:-https://repo1.maven.org/maven2/org/flywaydb/flyway-commandline/10.10.0/flyway-commandline-10.10.0.tar.gz}"
-SHAKA_FLYWAY_CLI_SHA256="${SHAKA_FLYWAY_CLI_SHA256:-77dd0af6f85b7caba74126f98920d026ddc3b5682de590322582da7ee957c331}"
-SHAKA_MYSQL_CONNECTOR_J_URL="${SHAKA_MYSQL_CONNECTOR_J_URL:-https://repo1.maven.org/maven2/com/mysql/mysql-connector-j/8.3.0/mysql-connector-j-8.3.0.jar}"
-SHAKA_MYSQL_CONNECTOR_J_SHA256="${SHAKA_MYSQL_CONNECTOR_J_SHA256:-94e7fa815370cdcefed915db7f53f88445fac110f8c3818392b992ec9ee6d295}"
+FLYWAY_CLI_URL="https://repo1.maven.org/maven2/org/flywaydb/flyway-commandline/10.10.0/flyway-commandline-10.10.0.tar.gz"
+FLYWAY_CLI_SHA256="77dd0af6f85b7caba74126f98920d026ddc3b5682de590322582da7ee957c331"
+MYSQL_CONNECTOR_J_URL="https://repo1.maven.org/maven2/com/mysql/mysql-connector-j/8.3.0/mysql-connector-j-8.3.0.jar"
+MYSQL_CONNECTOR_J_SHA256="94e7fa815370cdcefed915db7f53f88445fac110f8c3818392b992ec9ee6d295"
+
+reject_tool_pin_override() {
+  local name="$1"
+  if printenv "$name" >/dev/null; then
+    echo "ERROR: $name must not be set; production migration tool URLs and checksums are pinned in this script" >&2
+    exit 1
+  fi
+}
+
+reject_tool_pin_override SHAKA_FLYWAY_CLI_URL
+reject_tool_pin_override SHAKA_FLYWAY_CLI_SHA256
+reject_tool_pin_override SHAKA_MYSQL_CONNECTOR_J_URL
+reject_tool_pin_override SHAKA_MYSQL_CONNECTOR_J_SHA256
 
 case "$DB_MIGRATION_MODE" in
   none|validate-only|apply) ;;
@@ -136,13 +145,13 @@ install_flyway_cli() {
   local cli_archive="$work_dir/flyway-cli.tgz"
   local driver_jar="$work_dir/mysql-connector-j.jar"
 
-  curl -fsSL "$SHAKA_FLYWAY_CLI_URL" -o "$cli_archive"
-  verify_sha256 "$cli_archive" "$SHAKA_FLYWAY_CLI_SHA256"
+  curl -fsSL "$FLYWAY_CLI_URL" -o "$cli_archive"
+  verify_sha256 "$cli_archive" "$FLYWAY_CLI_SHA256"
   mkdir -p "$work_dir/flyway"
   tar -xzf "$cli_archive" -C "$work_dir/flyway" --strip-components=1
 
-  curl -fsSL "$SHAKA_MYSQL_CONNECTOR_J_URL" -o "$driver_jar"
-  verify_sha256 "$driver_jar" "$SHAKA_MYSQL_CONNECTOR_J_SHA256"
+  curl -fsSL "$MYSQL_CONNECTOR_J_URL" -o "$driver_jar"
+  verify_sha256 "$driver_jar" "$MYSQL_CONNECTOR_J_SHA256"
   mkdir -p "$work_dir/flyway/drivers"
   cp "$driver_jar" "$work_dir/flyway/drivers/"
 
