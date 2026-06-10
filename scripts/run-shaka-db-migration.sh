@@ -280,7 +280,7 @@ echo "Running Flyway info for production migration state..."
 run_flyway_task info | tee "$info_output"
 
 pending_migrations=0
-if grep -Eiq '\|[[:space:]]*Pending[[:space:]]*\|' "$info_output"; then
+if grep -Eiq '\|[[:space:]]*Pending[[:space:]]*\|[[:space:]]*$' "$info_output"; then
   pending_migrations=1
 fi
 
