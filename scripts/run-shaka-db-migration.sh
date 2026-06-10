@@ -238,15 +238,22 @@ wait_for_tunnel "$LOCAL_DB_PORT"
 run_flyway_task() {
   local task="$1"
   shift
-  local args=("$@")
   if [[ "$task" == "migrate" && "$SHAKA_FLYWAY_BASELINE_ON_MIGRATE" == "true" ]]; then
-    args+=("-baselineOnMigrate=true" "-baselineVersion=0")
+    set -- "$@" "-baselineOnMigrate=true" "-baselineVersion=0"
   fi
-  FLYWAY_URL="$FLYWAY_JDBC_URL" \
-    FLYWAY_USER="$SHAKA_PROD_DB_USERNAME" \
-    FLYWAY_PASSWORD="$SHAKA_PROD_DB_PASSWORD" \
-    FLYWAY_LOCATIONS="filesystem:${MIGRATION_DIR}" \
-    "$FLYWAY_BIN" "${args[@]}" "$task"
+  if (( $# > 0 )); then
+    FLYWAY_URL="$FLYWAY_JDBC_URL" \
+      FLYWAY_USER="$SHAKA_PROD_DB_USERNAME" \
+      FLYWAY_PASSWORD="$SHAKA_PROD_DB_PASSWORD" \
+      FLYWAY_LOCATIONS="filesystem:${MIGRATION_DIR}" \
+      "$FLYWAY_BIN" "$@" "$task"
+  else
+    FLYWAY_URL="$FLYWAY_JDBC_URL" \
+      FLYWAY_USER="$SHAKA_PROD_DB_USERNAME" \
+      FLYWAY_PASSWORD="$SHAKA_PROD_DB_PASSWORD" \
+      FLYWAY_LOCATIONS="filesystem:${MIGRATION_DIR}" \
+      "$FLYWAY_BIN" "$task"
+  fi
 }
 
 require_backup_readiness() {
