@@ -52,7 +52,7 @@ class AppProductionDeployTest(unittest.TestCase):
             text.index("Deploy server artifact and OTLP runtime through infra"),
         )
         self.assertIn("inputs.db_migration_mode != 'validate-only'", text)
-        self.assertIn("SHAKA_PROD_DB_URL: ${{ secrets.DB_URL }}", text)
+        self.assertIn("SHAKA_PROD_DB_URL: ${{ secrets.SHAKA_PROD_DB_URL }}", text)
         self.assertIn("SHAKA_PROD_DB_USERNAME: ${{ secrets.SHAKA_DB_USERNAME }}", text)
         self.assertIn("SHAKA_PROD_DB_PASSWORD: ${{ secrets.SHAKA_DB_PASSWORD }}", text)
         self.assertNotIn("secrets.SHAKA_PROD_DB_USERNAME", text)
@@ -93,10 +93,9 @@ class AppProductionDeployTest(unittest.TestCase):
     def test_migration_gate_reuses_existing_production_secret_names(self):
         workflow = WORKFLOW.read_text(encoding="utf-8")
         script = MIGRATION_SCRIPT.read_text(encoding="utf-8")
-        self.assertIn("SHAKA_PROD_DB_URL: ${{ secrets.DB_URL }}", workflow)
+        self.assertIn("SHAKA_PROD_DB_URL: ${{ secrets.SHAKA_PROD_DB_URL }}", workflow)
         self.assertIn("secrets.SHAKA_DB_USERNAME", workflow)
         self.assertIn("secrets.SHAKA_DB_PASSWORD", workflow)
-        self.assertNotIn("secrets.SHAKA_PROD_DB_URL", workflow)
         self.assertNotIn("secrets.SHAKA_PROD_DB_USERNAME", workflow)
         self.assertNotIn("secrets.SHAKA_PROD_DB_PASSWORD", workflow)
         self.assertNotIn("vars.SHAKA_FLYWAY_CLI_URL", workflow)
