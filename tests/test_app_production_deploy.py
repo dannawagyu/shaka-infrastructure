@@ -1,12 +1,16 @@
 #!/usr/bin/env python3
 """Static contract checks for infra-owned Shaka production app deploy."""
+import os
 from pathlib import Path
 import re
+import subprocess
+import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github" / "workflows" / "app-production-deploy.yml"
 SCRIPT = ROOT / "scripts" / "deploy-shaka-production.sh"
+MIGRATION_SCRIPT = ROOT / "scripts" / "run-shaka-db-migration.sh"
 ALLOY = ROOT / "deploy" / "grafana" / "alloy-otlp-config.alloy"
 SYSTEMD = ROOT / "deploy" / "systemd" / "shaka-server.service"
 
@@ -17,6 +21,16 @@ class AppProductionDeployTest(unittest.TestCase):
         self.assertIn("if: github.ref_name == 'main'", text)
         self.assertIn("environment: production", text)
         self.assertIn("deploy_confirmation=deploy-shaka-production", text)
+        self.assertIn("Required unless db_migration_mode=validate-only", text)
+        self.assertIn("db_migration_mode:", text)
+        self.assertIn("- validate-only", text)
+        self.assertIn("- apply", text)
+        self.assertIn("db_migration_confirmation:", text)
+        self.assertIn("db_migration_baseline_existing_schema:", text)
+        self.assertIn("Approve production DB migration apply", text)
+        self.assertIn("environment: production-db-migration", text)
+        self.assertIn("db_migration_gate:", text)
+        self.assertIn("id-token: write", text)
         self.assertIn("build-server-artifact:", text)
         self.assertIn("Deploy Shaka app from verified artifact", text)
         self.assertIn("repository: dannawagyu/shaka-server-spring", text)
@@ -29,14 +43,162 @@ class AppProductionDeployTest(unittest.TestCase):
         self.assertIn("GRAFANA_CLOUD_OTLP_PASSWORD: ${{ secrets.GRAFANA_CLOUD_OTLP_PASSWORD }}", text)
         self.assertIn("SHAKA_PROD_SSH_KNOWN_HOSTS", text)
         self.assertIn("OTEL_JAVA_AGENT_SHA256", text)
-        self.assertIn("actions/upload-artifact@v4", text)
-        self.assertIn("actions/download-artifact@v4", text)
+        self.assertIn("actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02", text)
+        self.assertIn("actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093", text)
+        self.assertIn("name: shaka-server-migration-sql", text)
+        self.assertIn("Stage server migration SQL", text)
+        self.assertIn("cp -R server/src/main/resources/db/migration migration-sql/", text)
+        self.assertIn("Run trusted Flyway migration gate before app mutation", text)
+        self.assertIn("infra/scripts/run-shaka-db-migration.sh", text)
+        self.assertLess(
+            text.index("Run trusted Flyway migration gate before app mutation"),
+            text.index("Deploy server artifact and OTLP runtime through infra"),
+        )
+        self.assertIn("inputs.db_migration_mode != 'validate-only'", text)
+        self.assertIn("SHAKA_PROD_DB_URL: ${{ secrets.SHAKA_PROD_DB_URL }}", text)
+        self.assertIn("SHAKA_PROD_DB_USERNAME: ${{ secrets.SHAKA_DB_USERNAME }}", text)
+        self.assertIn("SHAKA_PROD_DB_PASSWORD: ${{ secrets.SHAKA_DB_PASSWORD }}", text)
+        self.assertNotIn("secrets.SHAKA_PROD_DB_USERNAME", text)
+        self.assertNotIn("secrets.SHAKA_PROD_DB_PASSWORD", text)
+        self.assertIn("SHAKA_RDS_DB_INSTANCE_IDENTIFIER: ${{ vars.SHAKA_RDS_DB_INSTANCE_IDENTIFIER }}", text)
+        self.assertIn("SHAKA_FLYWAY_BASELINE_ON_MIGRATE: ${{ inputs.db_migration_baseline_existing_schema }}", text)
+        self.assertNotIn("vars.SHAKA_FLYWAY_CLI_URL", text)
+        self.assertNotIn("vars.SHAKA_FLYWAY_CLI_SHA256", text)
+        self.assertNotIn("vars.SHAKA_MYSQL_CONNECTOR_J_URL", text)
+        self.assertNotIn("vars.SHAKA_MYSQL_CONNECTOR_J_SHA256", text)
+        self.assertIn("Configure AWS credentials for migration apply backup verification", text)
+        self.assertIn("aws-actions/configure-aws-credentials@ff717079ee2060e4bcee96c4779b553acc87447c", text)
+        self.assertIn("role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}", text)
+        self.assertNotIn("aws-access-key-id", text)
+        self.assertNotIn("aws-secret-access-key", text)
         self.assertIn("SHAKA_PROD_URL", text)
         self.assertIn("GRAFANA_PROMETHEUS_REMOTE_WRITE_URL", text)
         self.assertIn("GRAFANA_PROMETHEUS_REMOTE_WRITE_USER", text)
         self.assertIn("GRAFANA_PROMETHEUS_REMOTE_WRITE_TOKEN", text)
         self.assertNotIn("GRAFANA_CLOUD_LOKI_API_KEY", text)
         self.assertNotIn("TEMPO_OTLP_PASSWORD", text)
+
+    def test_production_deploy_workflow_pins_actions_to_full_commit_sha(self):
+        text = WORKFLOW.read_text(encoding="utf-8")
+        uses_refs = re.findall(r"^\s*uses:\s*([^\s#]+)", text, re.MULTILINE)
+        self.assertTrue(uses_refs)
+        for ref in uses_refs:
+            if ref.startswith("./"):
+                continue
+            with self.subTest(ref=ref):
+                self.assertRegex(ref, r"@[0-9a-f]{40}$")
+                self.assertNotRegex(ref, r"@v\d+(?:\b|$)")
+
+    def test_validate_only_skips_app_deploy_inputs_and_server_build_logic_for_migrations(self):
+        workflow = WORKFLOW.read_text(encoding="utf-8")
+        script = MIGRATION_SCRIPT.read_text(encoding="utf-8")
+        self.assertIn("inputs.db_migration_mode != 'validate-only'", workflow)
+        self.assertLess(
+            workflow.index("db_migration_gate:"),
+            workflow.index("deploy:"),
+        )
+        self.assertIn("SHAKA_MIGRATION_DIR: ${{ github.workspace }}/migration-sql/migration", workflow)
+        self.assertNotIn("server-migration-source", workflow)
+        self.assertNotIn("Set up Java 21 for Flyway Gradle tasks", workflow)
+        self.assertNotIn("SHAKA_PROD_DB_PASSWORD: ${{ secrets.SHAKA_PROD_DB_PASSWORD }}\n      SHAKA_PROD_URL", workflow)
+        self.assertNotIn("./gradlew", script)
+        self.assertIn("never runs server Gradle/build logic with production secrets", script)
+
+    def test_migration_gate_reuses_existing_production_secret_names(self):
+        workflow = WORKFLOW.read_text(encoding="utf-8")
+        script = MIGRATION_SCRIPT.read_text(encoding="utf-8")
+        self.assertIn("SHAKA_PROD_DB_URL: ${{ secrets.SHAKA_PROD_DB_URL }}", workflow)
+        self.assertIn("secrets.SHAKA_DB_USERNAME", workflow)
+        self.assertIn("secrets.SHAKA_DB_PASSWORD", workflow)
+        self.assertNotIn("secrets.SHAKA_PROD_DB_USERNAME", workflow)
+        self.assertNotIn("secrets.SHAKA_PROD_DB_PASSWORD", workflow)
+        self.assertNotIn("vars.SHAKA_FLYWAY_CLI_URL", workflow)
+        self.assertNotIn("vars.SHAKA_MYSQL_CONNECTOR_J_URL", workflow)
+        self.assertIn("production migration tool URLs and checksums are pinned in this script", script)
+
+    def test_migration_script_rejects_tool_pin_overrides(self):
+        script = MIGRATION_SCRIPT.read_text(encoding="utf-8")
+        self.assertIn('FLYWAY_CLI_URL="https://repo1.maven.org/', script)
+        self.assertIn('FLYWAY_CLI_SHA256="77dd0af6', script)
+        self.assertIn('MYSQL_CONNECTOR_J_URL="https://repo1.maven.org/', script)
+        self.assertIn('MYSQL_CONNECTOR_J_SHA256="94e7fa', script)
+        self.assertIn("reject_tool_pin_override SHAKA_FLYWAY_CLI_URL", script)
+        self.assertIn("reject_tool_pin_override SHAKA_FLYWAY_CLI_SHA256", script)
+        self.assertIn("reject_tool_pin_override SHAKA_MYSQL_CONNECTOR_J_URL", script)
+        self.assertIn("reject_tool_pin_override SHAKA_MYSQL_CONNECTOR_J_SHA256", script)
+        self.assertIn('printenv "$name"', script)
+        self.assertNotIn('SHAKA_FLYWAY_CLI_URL="${SHAKA_FLYWAY_CLI_URL:-', script)
+        self.assertNotIn('SHAKA_MYSQL_CONNECTOR_J_URL="${SHAKA_MYSQL_CONNECTOR_J_URL:-', script)
+
+    def test_migration_script_fails_when_tool_pin_override_env_is_present(self):
+        rejected_names = (
+            "SHAKA_FLYWAY_CLI_URL",
+            "SHAKA_FLYWAY_CLI_SHA256",
+            "SHAKA_MYSQL_CONNECTOR_J_URL",
+            "SHAKA_MYSQL_CONNECTOR_J_SHA256",
+        )
+        for name in rejected_names:
+            with self.subTest(name=name), tempfile.TemporaryDirectory() as migration_dir:
+                env = os.environ.copy()
+                for rejected_name in rejected_names:
+                    env.pop(rejected_name, None)
+                env.update(
+                    {
+                        "SHAKA_MIGRATION_DIR": migration_dir,
+                        "DB_MIGRATION_MODE": "none",
+                        name: "",
+                    }
+                )
+                result = subprocess.run(
+                    ["bash", str(MIGRATION_SCRIPT)],
+                    cwd=ROOT,
+                    env=env,
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                )
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn(name, result.stderr)
+                self.assertIn(
+                    "production migration tool URLs and checksums are pinned in this script",
+                    result.stderr,
+                )
+                self.assertNotIn("SHAKA_PROD_DB_URL is required", result.stderr)
+
+    def test_database_migration_script_fails_closed_and_uses_ssh_tunnel(self):
+        text = MIGRATION_SCRIPT.read_text(encoding="utf-8")
+        self.assertIn("DB_MIGRATION_MODE must be one of: none, validate-only, apply", text)
+        self.assertIn("pending Flyway migration detected", text)
+        self.assertIn("DB_MIGRATION_CONFIRMATION=migrate-shaka-production", text)
+        self.assertIn("flyway-commandline/10.10.0/flyway-commandline-10.10.0.tar.gz", text)
+        self.assertIn("77dd0af6f85b7caba74126f98920d026ddc3b5682de590322582da7ee957c331", text)
+        self.assertIn("mysql-connector-j/8.3.0/mysql-connector-j-8.3.0.jar", text)
+        self.assertIn("94e7fa815370cdcefed915db7f53f88445fac110f8c3818392b992ec9ee6d295", text)
+        self.assertIn("shasum -a 256 -c", text)
+        self.assertIn("tar -xzf", text)
+        self.assertIn("run_flyway_task info", text)
+        self.assertIn("run_flyway_task validate", text)
+        self.assertIn("run_flyway_task migrate", text)
+        self.assertIn("-ignoreMigrationPatterns=*:pending", text)
+        self.assertIn("grep -Eiq '\\|[[:space:]]*Pending[[:space:]]*\\|[[:space:]]*$'", text)
+        self.assertNotIn("(^|[[:space:]|])Pending", text)
+        self.assertIn("SHAKA_FLYWAY_BASELINE_ON_MIGRATE must be true or false", text)
+        self.assertIn("-baselineOnMigrate=true", text)
+        self.assertIn("-baselineVersion=0", text)
+        self.assertIn("StrictHostKeyChecking=yes", text)
+        self.assertIn("ExitOnForwardFailure=yes", text)
+        self.assertIn("-L \"127.0.0.1:${LOCAL_DB_PORT}:${DB_HOST}:${DB_PORT}\"", text)
+        self.assertIn("socket.create_connection", text)
+        self.assertNotIn("sleep 2", text)
+        self.assertIn("SHAKA_PROD_DB_URL must not embed a password", text)
+        self.assertIn("::add-mask::%s", text)
+        self.assertIn("aws rds describe-db-instances", text)
+        self.assertIn("BackupRetentionPeriod", text)
+        self.assertIn("LatestRestorableTime", text)
+        self.assertIn("isinstance(metadata, dict)", text)
+        self.assertNotIn("echo \"$SHAKA_PROD_DB_PASSWORD", text)
+        self.assertNotIn("-password=", text)
+        self.assertNotIn("set -x", text)
 
     def test_deploy_script_preflights_agent_and_combined_alloy_credentials(self):
         text = SCRIPT.read_text(encoding="utf-8")
