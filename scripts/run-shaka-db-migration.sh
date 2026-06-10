@@ -239,21 +239,13 @@ run_flyway_task() {
   local task="$1"
   shift
   if [[ "$task" == "migrate" && "$SHAKA_FLYWAY_BASELINE_ON_MIGRATE" == "true" ]]; then
-    set -- "$@" "-baselineOnMigrate=true" "-baselineVersion=0"
+    set -- ${1+"$@"} "-baselineOnMigrate=true" "-baselineVersion=0"
   fi
-  if (( $# > 0 )); then
-    FLYWAY_URL="$FLYWAY_JDBC_URL" \
-      FLYWAY_USER="$SHAKA_PROD_DB_USERNAME" \
-      FLYWAY_PASSWORD="$SHAKA_PROD_DB_PASSWORD" \
-      FLYWAY_LOCATIONS="filesystem:${MIGRATION_DIR}" \
-      "$FLYWAY_BIN" "$@" "$task"
-  else
-    FLYWAY_URL="$FLYWAY_JDBC_URL" \
-      FLYWAY_USER="$SHAKA_PROD_DB_USERNAME" \
-      FLYWAY_PASSWORD="$SHAKA_PROD_DB_PASSWORD" \
-      FLYWAY_LOCATIONS="filesystem:${MIGRATION_DIR}" \
-      "$FLYWAY_BIN" "$task"
-  fi
+  FLYWAY_URL="$FLYWAY_JDBC_URL" \
+    FLYWAY_USER="$SHAKA_PROD_DB_USERNAME" \
+    FLYWAY_PASSWORD="$SHAKA_PROD_DB_PASSWORD" \
+    FLYWAY_LOCATIONS="filesystem:${MIGRATION_DIR}" \
+    "$FLYWAY_BIN" ${1+"$@"} "$task"
 }
 
 require_backup_readiness() {
