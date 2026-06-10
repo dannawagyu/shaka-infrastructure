@@ -192,9 +192,7 @@ jobs:
       DB_MIGRATION_MODE: ${{ inputs.db_migration_mode }}
       DB_MIGRATION_CONFIRMATION: ${{ inputs.db_migration_confirmation }}
       SHAKA_FLYWAY_BASELINE_ON_MIGRATE: ${{ inputs.db_migration_baseline_existing_schema }}
-      # Prefer the server runtime DB_URL and existing Terraform DB credentials.
-      # SHAKA_PROD_DB_URL is kept only as a backward-compatible fallback.
-      SHAKA_PROD_DB_URL: ${{ secrets.DB_URL || secrets.SHAKA_PROD_DB_URL }}
+      SHAKA_PROD_DB_URL: ${{ secrets.DB_URL }}
       SHAKA_PROD_DB_USERNAME: ${{ secrets.SHAKA_DB_USERNAME }}
       SHAKA_PROD_DB_PASSWORD: ${{ secrets.SHAKA_DB_PASSWORD }}
       SHAKA_PROD_HOST: ${{ secrets.SHAKA_PROD_HOST }}
