@@ -98,6 +98,17 @@ class AppProductionDeployTest(unittest.TestCase):
             workflow.index("deploy:"),
         )
         self.assertIn("SHAKA_MIGRATION_DIR: ${{ github.workspace }}/migration-sql/migration", workflow)
+        self.assertIn("Set up Java 21 for Flyway CLI", workflow)
+        self.assertIn("Verify Java runtime for Flyway CLI", workflow)
+        self.assertIn("java -version", workflow)
+        self.assertLess(
+            workflow.index("Set up Java 21 for Flyway CLI"),
+            workflow.index("Run trusted Flyway migration gate before app mutation"),
+        )
+        self.assertLess(
+            workflow.index("Verify Java runtime for Flyway CLI"),
+            workflow.index("Run trusted Flyway migration gate before app mutation"),
+        )
         self.assertNotIn("server-migration-source", workflow)
         self.assertNotIn("Set up Java 21 for Flyway Gradle tasks", workflow)
         self.assertNotIn("SHAKA_PROD_DB_PASSWORD: ${{ secrets.SHAKA_PROD_DB_PASSWORD }}\n      SHAKA_PROD_URL", workflow)
