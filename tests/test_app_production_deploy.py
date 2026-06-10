@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 """Static contract checks for infra-owned Shaka production app deploy."""
+import os
 from pathlib import Path
 import re
+import subprocess
+import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -111,15 +114,56 @@ class AppProductionDeployTest(unittest.TestCase):
         self.assertNotIn("secrets.SHAKA_PROD_DB_PASSWORD", workflow)
         self.assertNotIn("vars.SHAKA_FLYWAY_CLI_URL", workflow)
         self.assertNotIn("vars.SHAKA_MYSQL_CONNECTOR_J_URL", workflow)
-        self.assertIn("defaults to pinned Flyway commandline 10.10.0", script)
-        self.assertIn("defaults to pinned MySQL Connector/J 8.3.0", script)
+        self.assertIn("production migration tool URLs and checksums are pinned in this script", script)
 
-    def test_migration_script_keeps_tool_pins_overridable(self):
+    def test_migration_script_rejects_tool_pin_overrides(self):
         script = MIGRATION_SCRIPT.read_text(encoding="utf-8")
-        self.assertIn('SHAKA_FLYWAY_CLI_URL="${SHAKA_FLYWAY_CLI_URL:-https://repo1.maven.org/', script)
-        self.assertIn('SHAKA_FLYWAY_CLI_SHA256="${SHAKA_FLYWAY_CLI_SHA256:-77dd0af6', script)
-        self.assertIn('SHAKA_MYSQL_CONNECTOR_J_URL="${SHAKA_MYSQL_CONNECTOR_J_URL:-https://repo1.maven.org/', script)
-        self.assertIn('SHAKA_MYSQL_CONNECTOR_J_SHA256="${SHAKA_MYSQL_CONNECTOR_J_SHA256:-94e7fa', script)
+        self.assertIn('FLYWAY_CLI_URL="https://repo1.maven.org/', script)
+        self.assertIn('FLYWAY_CLI_SHA256="77dd0af6', script)
+        self.assertIn('MYSQL_CONNECTOR_J_URL="https://repo1.maven.org/', script)
+        self.assertIn('MYSQL_CONNECTOR_J_SHA256="94e7fa', script)
+        self.assertIn("reject_tool_pin_override SHAKA_FLYWAY_CLI_URL", script)
+        self.assertIn("reject_tool_pin_override SHAKA_FLYWAY_CLI_SHA256", script)
+        self.assertIn("reject_tool_pin_override SHAKA_MYSQL_CONNECTOR_J_URL", script)
+        self.assertIn("reject_tool_pin_override SHAKA_MYSQL_CONNECTOR_J_SHA256", script)
+        self.assertIn('printenv "$name"', script)
+        self.assertNotIn('SHAKA_FLYWAY_CLI_URL="${SHAKA_FLYWAY_CLI_URL:-', script)
+        self.assertNotIn('SHAKA_MYSQL_CONNECTOR_J_URL="${SHAKA_MYSQL_CONNECTOR_J_URL:-', script)
+
+    def test_migration_script_fails_when_tool_pin_override_env_is_present(self):
+        rejected_names = (
+            "SHAKA_FLYWAY_CLI_URL",
+            "SHAKA_FLYWAY_CLI_SHA256",
+            "SHAKA_MYSQL_CONNECTOR_J_URL",
+            "SHAKA_MYSQL_CONNECTOR_J_SHA256",
+        )
+        for name in rejected_names:
+            with self.subTest(name=name), tempfile.TemporaryDirectory() as migration_dir:
+                env = os.environ.copy()
+                for rejected_name in rejected_names:
+                    env.pop(rejected_name, None)
+                env.update(
+                    {
+                        "SHAKA_MIGRATION_DIR": migration_dir,
+                        "DB_MIGRATION_MODE": "none",
+                        name: "",
+                    }
+                )
+                result = subprocess.run(
+                    ["bash", str(MIGRATION_SCRIPT)],
+                    cwd=ROOT,
+                    env=env,
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                )
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn(name, result.stderr)
+                self.assertIn(
+                    "production migration tool URLs and checksums are pinned in this script",
+                    result.stderr,
+                )
+                self.assertNotIn("SHAKA_PROD_DB_URL is required", result.stderr)
 
     def test_database_migration_script_fails_closed_and_uses_ssh_tunnel(self):
         text = MIGRATION_SCRIPT.read_text(encoding="utf-8")
