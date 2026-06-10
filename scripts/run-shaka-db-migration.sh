@@ -18,10 +18,6 @@ Required environment variables:
   SHAKA_PROD_HOST
   SHAKA_PROD_SSH_KEY or SHAKA_PROD_SSH_KEY_PATH
   SHAKA_PROD_SSH_KNOWN_HOSTS
-  SHAKA_FLYWAY_CLI_URL
-  SHAKA_FLYWAY_CLI_SHA256
-  SHAKA_MYSQL_CONNECTOR_J_URL
-  SHAKA_MYSQL_CONNECTOR_J_SHA256
 
 Required when DB_MIGRATION_MODE=apply:
   DB_MIGRATION_CONFIRMATION      migrate-shaka-production
@@ -31,6 +27,10 @@ Optional environment variables:
   AWS_REGION                     defaults to ap-southeast-2
   SHAKA_PROD_SSH_USER            defaults to ubuntu
   SHAKA_FLYWAY_BASELINE_ON_MIGRATE true only for reviewed first-time Flyway adoption
+  SHAKA_FLYWAY_CLI_URL             defaults to pinned Flyway commandline 10.10.0
+  SHAKA_FLYWAY_CLI_SHA256          defaults to pinned Flyway commandline 10.10.0 SHA-256
+  SHAKA_MYSQL_CONNECTOR_J_URL      defaults to pinned MySQL Connector/J 8.3.0
+  SHAKA_MYSQL_CONNECTOR_J_SHA256   defaults to pinned MySQL Connector/J 8.3.0 SHA-256
 USAGE
 }
 
@@ -45,6 +45,10 @@ DB_MIGRATION_CONFIRMATION="${DB_MIGRATION_CONFIRMATION:-}"
 AWS_REGION="${AWS_REGION:-ap-southeast-2}"
 SHAKA_PROD_SSH_USER="${SHAKA_PROD_SSH_USER:-ubuntu}"
 SHAKA_FLYWAY_BASELINE_ON_MIGRATE="${SHAKA_FLYWAY_BASELINE_ON_MIGRATE:-false}"
+SHAKA_FLYWAY_CLI_URL="${SHAKA_FLYWAY_CLI_URL:-https://repo1.maven.org/maven2/org/flywaydb/flyway-commandline/10.10.0/flyway-commandline-10.10.0.tar.gz}"
+SHAKA_FLYWAY_CLI_SHA256="${SHAKA_FLYWAY_CLI_SHA256:-77dd0af6f85b7caba74126f98920d026ddc3b5682de590322582da7ee957c331}"
+SHAKA_MYSQL_CONNECTOR_J_URL="${SHAKA_MYSQL_CONNECTOR_J_URL:-https://repo1.maven.org/maven2/com/mysql/mysql-connector-j/8.3.0/mysql-connector-j-8.3.0.jar}"
+SHAKA_MYSQL_CONNECTOR_J_SHA256="${SHAKA_MYSQL_CONNECTOR_J_SHA256:-94e7fa815370cdcefed915db7f53f88445fac110f8c3818392b992ec9ee6d295}"
 
 case "$DB_MIGRATION_MODE" in
   none|validate-only|apply) ;;
@@ -67,11 +71,6 @@ esac
 : "${SHAKA_PROD_DB_PASSWORD:?SHAKA_PROD_DB_PASSWORD is required}"
 : "${SHAKA_PROD_HOST:?SHAKA_PROD_HOST is required}"
 : "${SHAKA_PROD_SSH_KNOWN_HOSTS:?SHAKA_PROD_SSH_KNOWN_HOSTS is required}"
-: "${SHAKA_FLYWAY_CLI_URL:?SHAKA_FLYWAY_CLI_URL is required}"
-: "${SHAKA_FLYWAY_CLI_SHA256:?SHAKA_FLYWAY_CLI_SHA256 is required}"
-: "${SHAKA_MYSQL_CONNECTOR_J_URL:?SHAKA_MYSQL_CONNECTOR_J_URL is required}"
-: "${SHAKA_MYSQL_CONNECTOR_J_SHA256:?SHAKA_MYSQL_CONNECTOR_J_SHA256 is required}"
-
 if [[ ! -d "$MIGRATION_DIR" ]]; then
   echo "ERROR: required migration SQL directory not found: $MIGRATION_DIR" >&2
   exit 1
