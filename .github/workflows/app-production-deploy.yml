@@ -81,7 +81,7 @@ jobs:
           fi
 
       - name: Check out server repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           repository: dannawagyu/shaka-server-spring
           ref: ${{ inputs.server_ref }}
@@ -93,7 +93,7 @@ jobs:
           ssh-key: ${{ secrets.SHAKA_SERVER_DEPLOY_KEY }}
 
       - name: Set up Java 21
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4
         with:
           distribution: temurin
           java-version: "21"
@@ -144,7 +144,7 @@ jobs:
           cp -R server/src/main/resources/db/migration migration-sql/
 
       - name: Upload verified server artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: shaka-server-production-artifact
           path: artifact/
@@ -152,7 +152,7 @@ jobs:
           retention-days: 1
 
       - name: Upload server migration SQL
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: shaka-server-migration-sql
           path: migration-sql/
@@ -243,19 +243,19 @@ jobs:
           fi
 
       - name: Check out infrastructure repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           path: infra
 
       - name: Download server migration SQL
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: shaka-server-migration-sql
           path: migration-sql
 
       - name: Configure AWS credentials for migration apply backup verification
         if: inputs.db_migration_mode == 'apply'
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@ff717079ee2060e4bcee96c4779b553acc87447c # v4
         with:
           aws-region: ${{ env.AWS_REGION }}
           role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
@@ -355,12 +355,12 @@ jobs:
           fi
 
       - name: Check out infrastructure repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           path: infra
 
       - name: Download verified server artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: shaka-server-production-artifact
           path: server-artifact

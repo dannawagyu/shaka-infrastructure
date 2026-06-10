@@ -40,8 +40,8 @@ class AppProductionDeployTest(unittest.TestCase):
         self.assertIn("GRAFANA_CLOUD_OTLP_PASSWORD: ${{ secrets.GRAFANA_CLOUD_OTLP_PASSWORD }}", text)
         self.assertIn("SHAKA_PROD_SSH_KNOWN_HOSTS", text)
         self.assertIn("OTEL_JAVA_AGENT_SHA256", text)
-        self.assertIn("actions/upload-artifact@v4", text)
-        self.assertIn("actions/download-artifact@v4", text)
+        self.assertIn("actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02", text)
+        self.assertIn("actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093", text)
         self.assertIn("name: shaka-server-migration-sql", text)
         self.assertIn("Stage server migration SQL", text)
         self.assertIn("cp -R server/src/main/resources/db/migration migration-sql/", text)
@@ -64,7 +64,7 @@ class AppProductionDeployTest(unittest.TestCase):
         self.assertNotIn("vars.SHAKA_MYSQL_CONNECTOR_J_URL", text)
         self.assertNotIn("vars.SHAKA_MYSQL_CONNECTOR_J_SHA256", text)
         self.assertIn("Configure AWS credentials for migration apply backup verification", text)
-        self.assertIn("aws-actions/configure-aws-credentials@v4", text)
+        self.assertIn("aws-actions/configure-aws-credentials@ff717079ee2060e4bcee96c4779b553acc87447c", text)
         self.assertIn("role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}", text)
         self.assertNotIn("aws-access-key-id", text)
         self.assertNotIn("aws-secret-access-key", text)
@@ -74,6 +74,15 @@ class AppProductionDeployTest(unittest.TestCase):
         self.assertIn("GRAFANA_PROMETHEUS_REMOTE_WRITE_TOKEN", text)
         self.assertNotIn("GRAFANA_CLOUD_LOKI_API_KEY", text)
         self.assertNotIn("TEMPO_OTLP_PASSWORD", text)
+
+    def test_production_deploy_workflow_pins_actions_to_full_commit_sha(self):
+        text = WORKFLOW.read_text(encoding="utf-8")
+        uses_refs = re.findall(r"uses:\s*([^\s#]+)", text)
+        self.assertTrue(uses_refs)
+        for ref in uses_refs:
+            with self.subTest(ref=ref):
+                self.assertRegex(ref, r"@[0-9a-f]{40}$")
+                self.assertNotRegex(ref, r"@v\d+(?:\b|$)")
 
     def test_validate_only_skips_app_deploy_inputs_and_server_build_logic_for_migrations(self):
         workflow = WORKFLOW.read_text(encoding="utf-8")
@@ -125,6 +134,8 @@ class AppProductionDeployTest(unittest.TestCase):
         self.assertIn("run_flyway_task validate", text)
         self.assertIn("run_flyway_task migrate", text)
         self.assertIn("-ignoreMigrationPatterns=*:pending", text)
+        self.assertIn("grep -Eiq '\\|[[:space:]]*Pending[[:space:]]*\\|'", text)
+        self.assertNotIn("(^|[[:space:]|])Pending", text)
         self.assertIn("SHAKA_FLYWAY_BASELINE_ON_MIGRATE must be true or false", text)
         self.assertIn("-baselineOnMigrate=true", text)
         self.assertIn("-baselineVersion=0", text)
