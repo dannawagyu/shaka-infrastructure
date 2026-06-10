@@ -253,6 +253,18 @@ jobs:
           name: shaka-server-migration-sql
           path: migration-sql
 
+      - name: Set up Java 21 for Flyway CLI
+        uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Verify Java runtime for Flyway CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+          java -version
+
       - name: Configure AWS credentials for migration apply backup verification
         if: inputs.db_migration_mode == 'apply'
         uses: aws-actions/configure-aws-credentials@ff717079ee2060e4bcee96c4779b553acc87447c # v4
