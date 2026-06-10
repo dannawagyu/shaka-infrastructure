@@ -103,7 +103,7 @@ class AppProductionDeployTest(unittest.TestCase):
         self.assertIn("java -version", workflow)
         self.assertLess(
             workflow.index("Set up Java 21 for Flyway CLI"),
-            workflow.index("Run trusted Flyway migration gate before app mutation"),
+            workflow.index("Verify Java runtime for Flyway CLI"),
         )
         self.assertLess(
             workflow.index("Verify Java runtime for Flyway CLI"),
