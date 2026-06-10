@@ -103,6 +103,13 @@ class AppProductionDeployTest(unittest.TestCase):
         self.assertIn("defaults to pinned Flyway commandline 10.10.0", script)
         self.assertIn("defaults to pinned MySQL Connector/J 8.3.0", script)
 
+    def test_migration_script_keeps_tool_pins_overridable(self):
+        script = MIGRATION_SCRIPT.read_text(encoding="utf-8")
+        self.assertIn('SHAKA_FLYWAY_CLI_URL="${SHAKA_FLYWAY_CLI_URL:-https://repo1.maven.org/', script)
+        self.assertIn('SHAKA_FLYWAY_CLI_SHA256="${SHAKA_FLYWAY_CLI_SHA256:-77dd0af6', script)
+        self.assertIn('SHAKA_MYSQL_CONNECTOR_J_URL="${SHAKA_MYSQL_CONNECTOR_J_URL:-https://repo1.maven.org/', script)
+        self.assertIn('SHAKA_MYSQL_CONNECTOR_J_SHA256="${SHAKA_MYSQL_CONNECTOR_J_SHA256:-94e7fa', script)
+
     def test_database_migration_script_fails_closed_and_uses_ssh_tunnel(self):
         text = MIGRATION_SCRIPT.read_text(encoding="utf-8")
         self.assertIn("DB_MIGRATION_MODE must be one of: none, validate-only, apply", text)
