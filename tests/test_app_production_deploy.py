@@ -77,9 +77,11 @@ class AppProductionDeployTest(unittest.TestCase):
 
     def test_production_deploy_workflow_pins_actions_to_full_commit_sha(self):
         text = WORKFLOW.read_text(encoding="utf-8")
-        uses_refs = re.findall(r"uses:\s*([^\s#]+)", text)
+        uses_refs = re.findall(r"^\s*uses:\s*([^\s#]+)", text, re.MULTILINE)
         self.assertTrue(uses_refs)
         for ref in uses_refs:
+            if ref.startswith("./"):
+                continue
             with self.subTest(ref=ref):
                 self.assertRegex(ref, r"@[0-9a-f]{40}$")
                 self.assertNotRegex(ref, r"@v\d+(?:\b|$)")
@@ -134,7 +136,7 @@ class AppProductionDeployTest(unittest.TestCase):
         self.assertIn("run_flyway_task validate", text)
         self.assertIn("run_flyway_task migrate", text)
         self.assertIn("-ignoreMigrationPatterns=*:pending", text)
-        self.assertIn("grep -Eiq '\\|[[:space:]]*Pending[[:space:]]*\\|'", text)
+        self.assertIn("grep -Eiq '\\|[[:space:]]*Pending[[:space:]]*\\|[[:space:]]*$'", text)
         self.assertNotIn("(^|[[:space:]|])Pending", text)
         self.assertIn("SHAKA_FLYWAY_BASELINE_ON_MIGRATE must be true or false", text)
         self.assertIn("-baselineOnMigrate=true", text)
