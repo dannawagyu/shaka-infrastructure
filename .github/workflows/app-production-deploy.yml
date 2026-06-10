@@ -193,18 +193,14 @@ jobs:
       DB_MIGRATION_CONFIRMATION: ${{ inputs.db_migration_confirmation }}
       SHAKA_FLYWAY_BASELINE_ON_MIGRATE: ${{ inputs.db_migration_baseline_existing_schema }}
       SHAKA_PROD_DB_URL: ${{ secrets.SHAKA_PROD_DB_URL }}
-      SHAKA_PROD_DB_USERNAME: ${{ secrets.SHAKA_PROD_DB_USERNAME }}
-      SHAKA_PROD_DB_PASSWORD: ${{ secrets.SHAKA_PROD_DB_PASSWORD }}
+      SHAKA_PROD_DB_USERNAME: ${{ secrets.SHAKA_DB_USERNAME }}
+      SHAKA_PROD_DB_PASSWORD: ${{ secrets.SHAKA_DB_PASSWORD }}
       SHAKA_PROD_HOST: ${{ secrets.SHAKA_PROD_HOST }}
       SHAKA_PROD_SSH_USER: ${{ secrets.SHAKA_PROD_SSH_USER || 'ubuntu' }}
       SHAKA_PROD_SSH_KEY: ${{ secrets.SHAKA_PROD_SSH_KEY }}
       SHAKA_PROD_SSH_KNOWN_HOSTS: ${{ secrets.SHAKA_PROD_SSH_KNOWN_HOSTS }}
       SHAKA_RDS_DB_INSTANCE_IDENTIFIER: ${{ vars.SHAKA_RDS_DB_INSTANCE_IDENTIFIER }}
       AWS_REGION: ${{ vars.AWS_REGION || 'ap-southeast-2' }}
-      SHAKA_FLYWAY_CLI_URL: ${{ vars.SHAKA_FLYWAY_CLI_URL }}
-      SHAKA_FLYWAY_CLI_SHA256: ${{ vars.SHAKA_FLYWAY_CLI_SHA256 }}
-      SHAKA_MYSQL_CONNECTOR_J_URL: ${{ vars.SHAKA_MYSQL_CONNECTOR_J_URL }}
-      SHAKA_MYSQL_CONNECTOR_J_SHA256: ${{ vars.SHAKA_MYSQL_CONNECTOR_J_SHA256 }}
     steps:
       - name: Validate production DB migration inputs
         shell: bash
@@ -229,7 +225,7 @@ jobs:
               ;;
           esac
           missing=()
-          for name in SHAKA_PROD_DB_URL SHAKA_PROD_DB_USERNAME SHAKA_PROD_DB_PASSWORD SHAKA_PROD_HOST SHAKA_PROD_SSH_KEY SHAKA_PROD_SSH_KNOWN_HOSTS SHAKA_FLYWAY_CLI_URL SHAKA_FLYWAY_CLI_SHA256 SHAKA_MYSQL_CONNECTOR_J_URL SHAKA_MYSQL_CONNECTOR_J_SHA256; do
+          for name in SHAKA_PROD_DB_URL SHAKA_PROD_DB_USERNAME SHAKA_PROD_DB_PASSWORD SHAKA_PROD_HOST SHAKA_PROD_SSH_KEY SHAKA_PROD_SSH_KNOWN_HOSTS; do
             if [[ -z "${!name:-}" ]]; then
               missing+=("$name")
             fi
